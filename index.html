@@ -722,6 +722,26 @@ function startApp(info){
   setInterval(()=>{updateSpread();},5000);
   setInterval(()=>{updateMTFEntry();calcPosition();},10000);
   setInterval(()=>{runAll();},15000);
+
+  // Обновляем свечи H1 и M30 каждые 2 минуты — чтобы анализ не застывал
+  setInterval(async()=>{
+    const s=ST[curSym];
+    const[k60,k30]=await Promise.all([fetchK(curSym,'60',50),fetchK(curSym,'30',50)]);
+    if(k60.length){s.candles[60]=k60;s.lastTs[60]=k60[k60.length-1].ts;s.curC[60]={...k60[k60.length-1]};}
+    if(k30.length){s.candles[30]=k30;s.lastTs[30]=k30[k30.length-1].ts;s.curC[30]={...k30[k30.length-1]};}
+    runAll();
+  },2*60*1000);
+
+  // Обновляем свечи H4 каждые 5 минут
+  setInterval(async()=>{
+    const s=ST[curSym];
+    const k240=await fetchK(curSym,'240',30);
+    if(k240.length){s.candles[240]=k240;s.lastTs[240]=k240[k240.length-1].ts;s.curC[240]={...k240[k240.length-1]};}
+    // Также обновляем M15 для актуальных уровней
+    const k15=await fetchK(curSym,'15',100);
+    if(k15.length){s.candles[15]=k15;s.lastTs[15]=k15[k15.length-1].ts;s.curC[15]={...k15[k15.length-1]};s.prices=k15.map(c=>c.c);s.av=k15.map(c=>c.bv+c.sv);s.bv=k15.map(c=>c.bv);s.sv=k15.map(c=>c.sv);}
+    runAll();updateSpread();
+  },5*60*1000);
 }
 
 // ════════════════════════════════════════════════════════
@@ -1237,6 +1257,20 @@ function connect(){
   ws.onclose=()=>setTimeout(connect,3000);
   ws.onerror=()=>ws.close();
 }
+
+// Переподключаемся когда пользователь возвращается в браузер
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'){
+    // Страница снова активна — проверяем WebSocket и данные
+    if(!ws||ws.readyState===WebSocket.CLOSED||ws.readyState===WebSocket.CLOSING){
+      connect();
+    }
+    // Перезагружаем данные текущей пары
+    loadSym(curSym).then(()=>{
+      buildChartPts();resizeC();drawChart();drawStoch();runAll();updateSpread();
+    });
+  }
+});
 function onTrades(topic,data){
   const sym=topic.split('.')[1],s=ST[sym];if(!s)return;
   data.forEach(t=>{
@@ -1256,6 +1290,8 @@ function onTrades(topic,data){
       s.curC[tf].c=price;if(side==='Buy')s.curC[tf].bv+=usd;else s.curC[tf].sv+=usd;s.curC[tf].vol+=qty;});
     updatePC(sym,price,s.prev);
     if(sym===curSym&&s.prices.length%5===0)drawChart();
+    // Пересчитываем анализ каждые 20 тиков по текущей паре
+    if(sym===curSym&&s.prices.length%20===0){runAll();}
     const thresh=SYM_THRESH[sym]||parseFloat(document.getElementById('thresh').value)||50000;
     const avgV=s.av.length?s.av.reduce((a,b)=>a+b,0)/s.av.length:1;
     if(usd>=thresh){
@@ -1300,6 +1336,10 @@ function setSym(s){
   document.getElementById('chart-ttl').textContent=SYM_NAME[s]+' · '+(curTF===60?'H1':curTF===240?'H4':'M'+curTF);
   buildChartPts();resizeC();drawChart();drawStoch();renderFeed();renderStats();runAll();
   setTimeout(()=>{resizeC();drawChart();drawStoch();},300);
+  // Перезагружаем свежие данные для новой пары
+  loadSym(s).then(()=>{
+    buildChartPts();resizeC();drawChart();drawStoch();runAll();
+  });
 }
 function setTF(tf){
   curTF=tf;
