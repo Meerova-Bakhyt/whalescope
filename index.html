@@ -437,6 +437,7 @@ header{background:var(--panel);border-bottom:1px solid var(--border);padding:10p
     <div class="card mb12" id="mf-box" style="border:2px solid var(--b2)">
       <div class="card-hdr"><h4>5 УСЛОВИЙ ВХОДА — H4 ФИЛЬТР + H1 ОБЯЗАТЕЛЕН</h4><span id="mf-time" style="font-family:var(--mono);font-size:10px;color:var(--m2)">—</span></div>
       <div class="card-body">
+        <div class="mf-row" id="mf-btc"><span class="mf-icon">⏳</span><div class="mf-text">₿ BTC контекст — рынок поддерживает</div><div class="mf-badge" style="color:var(--m2)">—</div></div>
         <div class="mf-row" id="mf-h4"><span class="mf-icon">⏳</span><div class="mf-text">🛡️ H4 — не против сигнала</div><div class="mf-badge" style="color:var(--m2)">—</div></div>
         <div class="mf-row" id="mf-h1"><span class="mf-icon">⏳</span><div class="mf-text">⭐ H1 — главный тренд совпадает</div><div class="mf-badge" style="color:var(--m2)">—</div></div>
         <div class="mf-row" id="mf-score"><span class="mf-icon">⏳</span><div class="mf-text">📊 Балл подтверждения ≥ 8/10</div><div class="mf-badge" style="color:var(--m2)">—</div></div>
@@ -1464,6 +1465,26 @@ function drawStoch(){
 // ════════════════════════════════════════════════════════
 // ГЛАВНЫЙ АНАЛИЗ — runAll
 // ════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════
+// КОРРЕЛЯЦИОННЫЙ ФИЛЬТР BTC
+// Если BTC падает — альты не покупаем
+// ════════════════════════════════════════════════════════
+function getBTCContext(){
+  if(curSym==='BTCUSDT')return{ok:true,msg:'',bearish:false};
+  const btc=ST['BTCUSDT'];
+  if(!btc||!btc.candles[60]||btc.candles[60].length<3)return{ok:true,msg:'',bearish:false};
+  const btcH1=detectTrend('BTCUSDT',60);
+  const btcH4=detectTrend('BTCUSDT',240);
+  const btcM30=detectTrend('BTCUSDT',30);
+  // BTC сильно медвежий если H1+H4 оба медвежьи
+  const btcBearish=btcH1==='bear'&&btcH4==='bear';
+  // BTC умеренно медвежий если H1 медвежий
+  const btcWeak=btcH1==='bear'&&btcM30==='bear';
+  if(btcBearish)return{ok:false,bearish:true,msg:`🚫 BTC медвежий (H1+H4↓) — покупки альтов опасны`};
+  if(btcWeak)return{ok:false,bearish:true,msg:`⚠️ BTC слабый (H1+M30↓) — BUY альтов рискован`};
+  return{ok:true,bearish:false,msg:''};
+}
+
 function runAll(){
   if(chartPts.length<2)buildChartPts();
   const ind=getInd(curSym);
@@ -1507,15 +1528,45 @@ function updateSignalBlock(dir,score,ind){
   if(ind.div&&ind.div.found){tt++;if((isBuy&&ind.div.dir==='buy')||(!isBuy&&ind.div.dir==='sell'))tc++;}
   if(ind.fib&&ind.fib.found&&ind.fib.sig){tt++;if((isBuy&&ind.fib.isBull)||(!isBuy&&!ind.fib.isBull))tc++;}
 
-  // Определяем статус
-  let icon,title,sub,bgC,bdC,titleCol;
-  if(h4bad){icon='🚫';title='H4 БЛОКИРУЕТ';sub=`H4 против ${sl}`;bgC='rgba(255,23,68,0.06)';bdC='rgba(255,23,68,0.3)';titleCol='var(--sell)';}
-  else if(exh.exhausted){icon='🔄';title='ТРЕНД ИСТОЩЁН';sub=exh.msg;bgC='rgba(255,171,0,0.08)';bdC='rgba(255,171,0,0.4)';titleCol='var(--warn)';}
-  else if(!c1){icon='⏸️';title='ОЖИДАНИЕ';sub='H1 не подтверждает — ждём';bgC='rgba(255,255,255,0.02)';bdC='var(--b2)';titleCol='var(--m2)';}
-  else if(exh.warn){icon=isBuy?'📈':'📉';title=`${sl} — ОСТОРОЖНО`;sub=exh.msg;bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.35)';titleCol=col;}
-  else if(score>=8&&mtfCnt>=2&&whaleOk){icon=isBuy?'🚀':'💥';title=`${sl} ${SYM_NAME[sym]}`;sub=`🏆 ВСЕ УСЛОВИЯ · Инд: ${tc}/${tt} · 🐋 Кит`;bgC=isBuy?'rgba(0,230,118,0.08)':'rgba(255,23,68,0.08)';bdC=col;titleCol=col;}
-  else if(score>=8&&mtfCnt>=2){icon=isBuy?'📈':'📉';title=`${sl} ${SYM_NAME[sym]}`;sub=`✅ Технический · Инд: ${tc}/${tt} · ждём кита 🐋`;bgC=isBuy?'rgba(0,230,118,0.05)':'rgba(255,23,68,0.05)';bdC='rgba(255,171,0,0.4)';titleCol=col;}
-  else{icon='🟡';title=`ВЕРОЯТНЫЙ ${sl}`;sub=`Балл ${score}/10 · MTF ${mtfCnt}/3 · Инд: ${tc}/${tt}`;bgC='rgba(255,171,0,0.04)';bdC='rgba(255,171,0,0.2)';titleCol='var(--warn)';}
+  // BTC корреляционный фильтр
+  const btcCtx=getBTCContext();
+  const btcBlocks=isBuy&&btcCtx.bearish;
+
+  let icon,title,sub,bgC,bdC,titleCol,entryStatus;
+  if(h4bad){
+    icon='🚫';title='НЕ ВХОДИТЬ';sub=`H4 против ${sl} — ждём разворота H4`;
+    bgC='rgba(255,23,68,0.08)';bdC='rgba(255,23,68,0.4)';titleCol='var(--sell)';entryStatus='blocked';
+  } else if(exh.exhausted){
+    icon='🔄';title='НЕ ВХОДИТЬ — ТРЕНД ИСТОЩЁН';sub=exh.msg;
+    bgC='rgba(255,171,0,0.08)';bdC='rgba(255,171,0,0.4)';titleCol='var(--warn)';entryStatus='blocked';
+  } else if(btcBlocks){
+    icon='🚫';title='НЕ ВХОДИТЬ В ЛОНГ';sub=btcCtx.msg;
+    bgC='rgba(255,23,68,0.06)';bdC='rgba(255,23,68,0.3)';titleCol='var(--sell)';entryStatus='blocked';
+  } else if(!c1){
+    icon='⏳';title='РАНО ВХОДИТЬ';sub=`H1 ещё не ${isBuy?'бычий':'медвежий'} — ждём подтверждения`;
+    bgC='rgba(255,255,255,0.02)';bdC='var(--b2)';titleCol='var(--m2)';entryStatus='early';
+  } else if(exh.warn){
+    icon='⚠️';title=`ОСТОРОЖНО — ${sl}`;sub=exh.msg+' · Уменьшите объём';
+    bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.35)';titleCol='var(--warn)';entryStatus='early';
+  } else if(smart.status==='wait_pullback'){
+    icon='🚂';title='ПОЗДНО ВХОДИТЬ';sub='Цена ушла далеко от ТВХ — ждём откат для нового входа';
+    bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.3)';titleCol='var(--warn)';entryStatus='late';
+  } else if(score>=8&&mtfCnt>=2&&whaleOk){
+    icon=isBuy?'🚀':'💥';title=`ВХОДИТЬ! ${sl} ${SYM_NAME[sym]}`;
+    sub=`🏆 ВСЕ УСЛОВИЯ · Балл ${score}/10 · MTF ${mtfCnt}/3 · Инд: ${tc}/${tt} · 🐋 Кит`;
+    bgC=isBuy?'rgba(0,230,118,0.1)':'rgba(255,23,68,0.1)';bdC=col;titleCol=col;entryStatus='enter';
+  } else if(score>=8&&mtfCnt>=2){
+    icon=isBuy?'📈':'📉';title=`МОЖНО ВХОДИТЬ — ${sl} ${SYM_NAME[sym]}`;
+    sub=`✅ Балл ${score}/10 · MTF ${mtfCnt}/3 · Инд: ${tc}/${tt} · ⚠️ Рекомендуемый объём: 30% от обычной суммы сделки`;
+    bgC=isBuy?'rgba(0,230,118,0.06)':'rgba(255,23,68,0.06)';bdC='rgba(255,171,0,0.4)';titleCol=col;entryStatus='wait_whale';
+  } else if(score>=5&&c1&&mtfCnt>=1){
+    icon='⏳';title='РАНО ВХОДИТЬ';
+    sub=`Балл ${score}/10 (нужно ≥8) · MTF ${mtfCnt}/3 (нужно ≥2) · ждём усиления`;
+    bgC='rgba(255,255,255,0.02)';bdC='var(--b2)';titleCol='var(--m2)';entryStatus='early';
+  } else {
+    icon='🚫';title='НЕ ВХОДИТЬ';sub=`Балл ${score}/10 · MTF ${mtfCnt}/3 · условия не выполнены`;
+    bgC='rgba(255,23,68,0.04)';bdC='rgba(255,23,68,0.2)';titleCol='var(--sell)';entryStatus='no';
+  }
 
   const sd=document.getElementById('sig-dir-box');
   if(sd){sd.style.background=bgC;sd.style.border=`1px solid ${bdC}`;}
@@ -1557,6 +1608,7 @@ function updateSignalBlock(dir,score,ind){
   else if(!c1)advice='⏳ Ждём чёткого H1 тренда перед входом';
   else if(dispProg.progress>=75)advice=dispProg.advice;
   else if(whaleOk)advice=`🐋 Кит подтверждает ${sl}! ${dispProg.advice}. После TP1 — перенесите SL в безубыток`;
+  else if(entryStatus==='wait_whale')advice=`📈 Технический сигнал без кита. Войдите на 30% от обычной суммы. Если кит подтвердит — добавьте остаток. После TP1 — перенесите SL в безубыток`;
   else advice=dispProg.advice+(dispProg.progress<50?' · После TP1 — перенесите SL в безубыток':'');
   const ae=document.getElementById('sig-advice');
   if(ae){ae.textContent='💡 '+advice;ae.style.color=exh.exhausted?'var(--warn)':dispProg.progress>=75?'var(--warn)':whaleOk?'var(--buy)':'var(--accent)';ae.style.background=exh.exhausted?'rgba(255,171,0,0.06)':'rgba(41,121,255,0.06)';ae.style.borderColor=exh.exhausted?'rgba(255,171,0,0.2)':'rgba(41,121,255,0.2)';}
@@ -1579,6 +1631,18 @@ function updateMasterFilter(dir,score,ind){
   const now=new Date(Date.now()+5*3600000);
   $('mf-time',`${String(now.getUTCHours()).padStart(2,'0')}:${String(now.getUTCMinutes()).padStart(2,'0')}`);
   const h4=ind.trendH4,h1=ind.trendH1,m30=ind.trendM30,m15=ind.trendM15;
+  // BTC фильтр
+  const btcCtx2=getBTCContext();
+  const mfBtcRow=document.getElementById('mf-btc');
+  if(mfBtcRow){
+    const btcOk=!btcCtx2.bearish||(dir==='Sell'); // для SELL BTC падение — хорошо
+    mfBtcRow.className='mf-row '+(btcOk?'ok':'bad');
+    mfBtcRow.querySelector('.mf-icon').textContent=btcOk?'✅':'🚫';
+    mfBtcRow.querySelector('.mf-text').textContent=btcCtx2.bearish?(dir==='Buy'?btcCtx2.msg:'BTC падает — SELL подтверждается'):'BTC нейтральный или бычий — покупки безопасны';
+    mfBtcRow.querySelector('.mf-text').style.color=btcOk?'var(--buy)':'var(--sell)';
+    mfBtcRow.querySelector('.mf-badge').textContent=btcOk?'✅':'🚫';
+    mfBtcRow.querySelector('.mf-badge').style.color=btcOk?'var(--buy)':'var(--sell)';
+  }
   const h4bad=(isBuy&&h4==='bear')||(!isBuy&&h4==='bull');
   // C1: H4 фильтр
   const h4ok=h4==='unknown'||h4==='neutral'||(isBuy&&h4==='bull')||(!isBuy&&h4==='bear');
