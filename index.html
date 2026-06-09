@@ -879,17 +879,78 @@ function detectImbalances(cc,price){
   return res.sort((a,b)=>a.dist-b.dist).slice(0,3);
 }
 function detectLevels(sym){
-  const s=ST[sym],price=s.price;if(!price)return{sup:[],res:[],psych:null};
-  const cc=[...(s.candles[60]||[]),...(s.candles[15]||[])].slice(-60);if(cc.length<10)return{sup:[],res:[],psych:null};
+  const s=ST[sym],price=s.price;
+  if(!price)return{sup:[],res:[],psych:null,ma30:null,ma90:null};
+
+  // ── 1. ИСТОРИЧЕСКИЕ УРОВНИ — берём максимум данных (200+ свечей) ──
+  const c240=s.candles[240]||[];  // H4 — долгосрочные уровни
+  const c60=s.candles[60]||[];    // H1 — среднесрочные
+  const c15=s.candles[15]||[];    // M15 — краткосрочные
+  // Объединяем все доступные свечи для максимального охвата истории
+  const allCandles=[...c240,...c60,...c15];
+  // Убираем дубликаты по timestamp
+  const seen=new Set();
+  const cc=allCandles.filter(c=>{if(seen.has(c.ts))return false;seen.add(c.ts);return true;});
+  if(cc.length<10)return{sup:[],res:[],psych:null,ma30:null,ma90:null};
+
+  // ── 2. НАХОДИМ УРОВНИ ──
   const raw=[];
-  for(let i=2;i<cc.length-2;i++){const c=cc[i];
-    if(c.h>cc[i-1].h&&c.h>cc[i-2].h&&c.h>cc[i+1].h&&c.h>cc[i+2].h)raw.push({price:c.h,type:'res',t:1});
-    if(c.l<cc[i-1].l&&c.l<cc[i-2].l&&c.l<cc[i+1].l&&c.l<cc[i+2].l)raw.push({price:c.l,type:'sup',t:1});}
-  const mg=[];raw.forEach(lv=>{const ex=mg.find(m=>Math.abs(m.price-lv.price)/lv.price<0.003);if(ex){ex.t++;ex.str=Math.min(5,ex.t);}else mg.push({...lv,str:1});});
-  const mag=Math.pow(10,Math.floor(Math.log10(price))),round=Math.round(price/mag)*mag;
-  const psych=Math.abs(price-round)/price<0.015?{price:round,label:`Псих. $${round.toLocaleString()}`}:null;
-  return{sup:mg.filter(l=>l.price<price&&l.type==='sup').sort((a,b)=>b.price-a.price).slice(0,3),res:mg.filter(l=>l.price>price&&l.type==='res').sort((a,b)=>a.price-b.price).slice(0,3),psych};
+  for(let i=3;i<cc.length-3;i++){const c=cc[i];
+    // Локальный максимум (сопротивление)
+    if(c.h>cc[i-1].h&&c.h>cc[i-2].h&&c.h>cc[i-3].h&&
+       c.h>cc[i+1].h&&c.h>cc[i+2].h&&c.h>cc[i+3].h)
+      raw.push({price:c.h,type:'res',t:1,vol:(c.bv+c.sv)||0});
+    // Локальный минимум (поддержка)
+    if(c.l<cc[i-1].l&&c.l<cc[i-2].l&&c.l<cc[i-3].l&&
+       c.l<cc[i+1].l&&c.l<cc[i+2].l&&c.l<cc[i+3].l)
+      raw.push({price:c.l,type:'sup',t:1,vol:(c.bv+c.sv)||0});
+  }
+
+  // ── 3. ОБЪЕДИНЯЕМ БЛИЗКИЕ УРОВНИ ──
+  const mg=[];
+  raw.forEach(lv=>{
+    const ex=mg.find(m=>Math.abs(m.price-lv.price)/lv.price<0.004);
+    if(ex){ex.t++;ex.str=Math.min(5,ex.t);ex.vol+=lv.vol;}
+    else mg.push({...lv,str:1});
+  });
+
+  // ── 4. MA30 и MA90 как динамические уровни (как в GMA системе) ──
+  const closes15=c15.map(c=>c.c);
+  const ma30=sma(closes15,Math.min(30,closes15.length));
+  const ma90=sma(closes15,Math.min(90,closes15.length));
+
+  // MA30 и MA90 действуют как поддержка/сопротивление
+  if(ma30){
+    const maType=price>ma30?'sup':'res';
+    mg.push({price:+ma30.toFixed(2),type:maType,t:3,str:3,vol:0,label:'MA30'});
+  }
+  if(ma90){
+    const maType=price>ma90?'sup':'res';
+    mg.push({price:+ma90.toFixed(2),type:maType,t:4,str:4,vol:0,label:'MA90'});
+  }
+
+  // ── 5. ПСИХОЛОГИЧЕСКИЕ УРОВНИ ──
+  const mag=Math.pow(10,Math.floor(Math.log10(price)));
+  const round=Math.round(price/mag)*mag;
+  // Также добавляем полу-психологические (0.5×)
+  const half=Math.round(price/(mag/2))*(mag/2);
+  const psych=Math.abs(price-round)/price<0.02?{price:round,label:`Псих. $${round.toLocaleString()}`,str:3}:null;
+  const halfLvl=(!psych&&Math.abs(price-half)/price<0.01)?{price:half,label:`Псих. $${half.toLocaleString()}`,str:2}:null;
+  if(psych){const t=price>round?'sup':'res';mg.push({price:round,type:t,t:3,str:3,vol:0,label:'Псих.'});}
+  if(halfLvl){const t=price>half?'sup':'res';mg.push({price:half,type:t,t:2,str:2,vol:0,label:'Псих.½'});}
+
+  // Сортируем по силе уровня (количество касаний × объём)
+  const sorted=mg.sort((a,b)=>(b.str*1000+b.vol)-(a.str*1000+a.vol));
+
+  return{
+    sup:sorted.filter(l=>l.price<price&&l.type==='sup').sort((a,b)=>b.price-a.price).slice(0,5),
+    res:sorted.filter(l=>l.price>price&&l.type==='res').sort((a,b)=>a.price-b.price).slice(0,5),
+    psych,
+    ma30:ma30?+ma30.toFixed(2):null,
+    ma90:ma90?+ma90.toFixed(2):null,
+  };
 }
+
 function detectFib(sym){
   const s=ST[sym];const cc=(s.candles[15]||[]).length>=10?s.candles[15]:s.candles[curTF]||[];
   if(cc.length<10)return{found:false};const sl=cc.slice(-50);
@@ -999,77 +1060,82 @@ function calcScore(side,ind){
   const isBuy=side==='Buy';
   const s=ST[curSym];
   if(s.prices.length<10)return 0;
+  // H4 ФИЛЬТР — полная блокировка
+  if((isBuy&&ind.trendH4==='bear')||(!isBuy&&ind.trendH4==='bull'))return 0;
   let sc=0;
 
-  // ── H4 ФИЛЬТР: если против — блокируем полностью ──
-  if((isBuy&&ind.trendH4==='bear')||(!isBuy&&ind.trendH4==='bull'))return 0;
-
-  // ── ТАЙМФРЕЙМЫ (основной вес) ──
-  // H1: вес ×3
+  // ══ БЛОК 1: ТАЙМФРЕЙМЫ ══
   if(ind.trendH1!=='unknown'){if((isBuy&&ind.trendH1==='bull')||(!isBuy&&ind.trendH1==='bear'))sc+=3;else if((isBuy&&ind.trendH1==='bear')||(!isBuy&&ind.trendH1==='bull'))sc-=4;}
-  // M30: вес ×2
   if(ind.trendM30!=='unknown'){if((isBuy&&ind.trendM30==='bull')||(!isBuy&&ind.trendM30==='bear'))sc+=2;else if((isBuy&&ind.trendM30==='bear')||(!isBuy&&ind.trendM30==='bull'))sc-=2;}
-  // M15: вес ×1
   if(ind.trendM15!=='unknown'){if((isBuy&&ind.trendM15==='bull')||(!isBuy&&ind.trendM15==='bear'))sc+=1;else if((isBuy&&ind.trendM15==='bear')||(!isBuy&&ind.trendM15==='bull'))sc-=1;}
 
-  // ── STOCH RSI ── (ключевой индикатор)
-  if(ind.stochRsi){
-    const K=ind.stochRsi.K;
+  // ══ БЛОК 2: ИНДИКАТОРЫ ══
+  if(ind.stochRsi){const K=ind.stochRsi.K;
     if(isBuy){if(ind.stochRsi.zone==='oversold')sc+=2.5;else if(K<50)sc+=0.5;else if(ind.stochRsi.zone==='overbought')sc-=2;}
     else{if(ind.stochRsi.zone==='overbought')sc+=2.5;else if(K>50)sc+=0.5;else if(ind.stochRsi.zone==='oversold')sc-=2;}
-    if(ind.stochRsi.cross){if((isBuy&&ind.stochRsi.cross.type==='bull')||(!isBuy&&ind.stochRsi.cross.type==='bear'))sc+=ind.stochRsi.cross.str*0.7;else sc-=1;}
-  }
-
-  // ── EMA ──
+    if(ind.stochRsi.cross){if((isBuy&&ind.stochRsi.cross.type==='bull')||(!isBuy&&ind.stochRsi.cross.type==='bear'))sc+=ind.stochRsi.cross.str*0.7;else sc-=1;}}
   if(ind.ema9&&ind.ema21){if((isBuy&&ind.ema9>ind.ema21)||(!isBuy&&ind.ema9<ind.ema21))sc+=1.5;else sc-=0.5;}
-
-  // ── MACD ──
   if(ind.macd){if((isBuy&&ind.macd.hist>0)||(!isBuy&&ind.macd.hist<0))sc+=1;else sc-=0.5;}
-
-  // ── VOLUME DELTA ──
   if((isBuy&&ind.volDelta>0)||(!isBuy&&ind.volDelta<0))sc+=1;else sc-=0.5;
-
-  // ── BOLLINGER ──
   if(ind.bb&&ind.price){const pos=(ind.price-ind.bb.lower)/(ind.bb.upper-ind.bb.lower);
     if(isBuy){if(pos<0.3)sc+=1.5;else if(pos<0.5)sc+=0.5;else if(pos>0.8)sc-=0.5;}
     else{if(pos>0.7)sc+=1.5;else if(pos>0.5)sc+=0.5;else if(pos<0.2)sc-=0.5;}}
-
-  // ── CANDLE METER ──
   if(ind.cm){if((isBuy&&ind.cm.bullPct>=65)||(!isBuy&&ind.cm.bearPct>=65))sc+=1;else if((isBuy&&ind.cm.bearPct>=65)||(!isBuy&&ind.cm.bullPct>=65))sc-=1;}
-
-  // ── SMA 50/200 ──
   if(ind.sma50&&ind.sma200){if((isBuy&&ind.sma50>ind.sma200)||(!isBuy&&ind.sma50<ind.sma200))sc+=0.5;else sc-=0.5;}
-
-  // ── VWAP ──
   if(ind.vwap&&ind.price){
     if((isBuy&&ind.price>ind.vwap.vwap)||(!isBuy&&ind.price<ind.vwap.vwap))sc+=1;
     if(isBuy&&ind.price<ind.vwap.l2)sc+=1.5;else if(!isBuy&&ind.price>ind.vwap.u2)sc+=1.5;}
+  if(ind.div&&ind.div.found){if((isBuy&&ind.div.dir==='buy')||(!isBuy&&ind.div.dir==='sell'))sc+=ind.div.str*0.7;else sc-=1.5;}
 
-  // ── ДИВЕРГЕНЦИЯ ──
-  if(ind.div&&ind.div.found){if((isBuy&&ind.div.dir==='buy')||(!isBuy&&ind.div.dir==='sell'))sc+=ind.div.str*0.7;else sc-=0.5;}
+  // ══ БЛОК 3: ПАТТЕРНЫ СВЕЧЕЙ — НОВОЕ ══
+  const cc3=s.candles[curTF]||[];
+  if(cc3.length>=3){
+    const pats=detectPatterns(cc3);
+    pats.forEach(p=>{
+      if(p.dir==='neutral')return;
+      const ok=(isBuy&&p.dir==='buy')||(!isBuy&&p.dir==='sell');
+      const ag=(isBuy&&p.dir==='sell')||(!isBuy&&p.dir==='buy');
+      if(ok){if(p.str>=3)sc+=1.5;else if(p.str>=2)sc+=0.8;else sc+=0.3;}
+      else if(ag){if(p.str>=3)sc-=1.5;else if(p.str>=2)sc-=0.8;}
+    });
+  }
 
-  // ── ФИБОНАЧЧИ ──
+  // ══ БЛОК 4: СТРУКТУРНЫЙ АНАЛИЗ — НОВОЕ ══
+  // Фибоначчи
   if(ind.fib&&ind.fib.found&&ind.fib.sig){if((isBuy&&ind.fib.isBull)||(!isBuy&&!ind.fib.isBull))sc+=ind.fib.sig.str*0.6;else sc-=0.5;}
-
-  // ── УРОВНИ S/R ──
+  // S/R уровни
   if(ind.lvls&&ind.price){
     if(isBuy&&ind.lvls.sup.length){const d=Math.abs(ind.price-ind.lvls.sup[0].price)/ind.price;if(d<0.008)sc+=1;}
     if(!isBuy&&ind.lvls.res.length){const d=Math.abs(ind.price-ind.lvls.res[0].price)/ind.price;if(d<0.008)sc+=1;}}
+  // MA30/MA90
+  if(ind.lvls?.ma30&&ind.price){const d=Math.abs(ind.price-ind.lvls.ma30)/ind.price;if(d<0.005){if((isBuy&&ind.price>ind.lvls.ma30)||(!isBuy&&ind.price<ind.lvls.ma30))sc+=1;}}
+  if(ind.lvls?.ma90&&ind.price){const d=Math.abs(ind.price-ind.lvls.ma90)/ind.price;if(d<0.008){if((isBuy&&ind.price>ind.lvls.ma90)||(!isBuy&&ind.price<ind.lvls.ma90))sc+=0.5;}}
+  // FVG имбаланс
+  if(ind.imb&&ind.imb.length&&ind.price){const ni=ind.imb[0];if(ni&&ni.dist/ind.price<0.01){if((isBuy&&ni.type==='bull')||(!isBuy&&ni.type==='bear'))sc+=0.8;else sc-=0.5;}}
+  // BOS — слом структуры — НОВОЕ
+  if(cc3.length>=4){
+    const pH=Math.max(...cc3.slice(-4,-1).map(x=>x.h));
+    const pL=Math.min(...cc3.slice(-4,-1).map(x=>x.l));
+    const lc=cc3[cc3.length-1];
+    if(isBuy&&lc.c>pH)sc+=1.5;
+    else if(!isBuy&&lc.c<pL)sc+=1.5;
+    else if(isBuy&&lc.c<pL)sc-=1;
+    else if(!isBuy&&lc.c>pH)sc-=1;
+  }
 
-  // ── ЛИКВИДНОСТЬ ──
-  if(ind.liq&&ind.liq.found&&ind.price){const near=ind.liq.zones[0];
-    if(near&&near.dist/ind.price<0.005){if((isBuy&&near.type==='sell_side')||(!isBuy&&near.type==='buy_side'))sc+=0.5;}}
-
-  // ── ИМБАЛАНС FVG ──
-  if(ind.imb&&ind.imb.length&&ind.price){const ni=ind.imb[0];
-    if(ni&&ni.dist/ind.price<0.01){if((isBuy&&ni.type==='bull')||(!isBuy&&ni.type==='bear'))sc+=0.5;else sc-=0.5;}}
+  // ══ БЛОК 5: ЛИКВИДНОСТЬ КАК МАГНИТ — НОВОЕ ══
+  if(ind.liq&&ind.liq.found&&ind.price){
+    const above=ind.liq.zones.filter(z=>z.above&&z.dist/ind.price<0.03);
+    const below=ind.liq.zones.filter(z=>!z.above&&z.dist/ind.price<0.03);
+    if(isBuy&&above.length)sc+=0.8;
+    if(!isBuy&&below.length)sc+=0.8;
+    if(isBuy&&below.length&&!above.length)sc-=0.5;
+  }
 
   return Math.min(10,Math.max(0,parseFloat(sc.toFixed(1))));
 }
 
-// ════════════════════════════════════════════════════════
-// ОПРЕДЕЛЕНИЕ НАПРАВЛЕНИЯ — ВСЕ ИНСТРУМЕНТЫ
-// ════════════════════════════════════════════════════════
+
 function autoDir(ind){
   let bull=0,bear=0;
   // Таймфреймы (главный вес)
@@ -1087,6 +1153,16 @@ function autoDir(ind){
   if(ind.sma50&&ind.sma200){if(ind.sma50>ind.sma200)bull+=0.5;else bear+=0.5;}
   if(ind.vwap&&ind.price){if(ind.price>ind.vwap.vwap)bull+=0.5;else bear+=0.5;}
   if(ind.div&&ind.div.found){if(ind.div.dir==='buy')bull+=ind.div.str*0.5;else bear+=ind.div.str*0.5;}
+  // Паттерны свечей в определении направления — НОВОЕ
+  const ccD=ST[curSym].candles[curTF]||[];
+  if(ccD.length>=3){const pats=detectPatterns(ccD);
+    pats.forEach(p=>{if(p.dir==='buy')bull+=p.str*0.4;else if(p.dir==='sell')bear+=p.str*0.4;});}
+  // BOS в определении направления — НОВОЕ
+  if(ccD.length>=4){
+    const pH=Math.max(...ccD.slice(-4,-1).map(x=>x.h));
+    const pL=Math.min(...ccD.slice(-4,-1).map(x=>x.l));
+    const lc=ccD[ccD.length-1];
+    if(lc.c>pH)bull+=1.5;else if(lc.c<pL)bear+=1.5;}
   return bull>=bear?'Buy':'Sell';
 }
 
@@ -1140,13 +1216,11 @@ function calcSmartEntry(sym,ind){
   const h1=ind.trendH1,h4=ind.trendH4,m30=ind.trendM30,m15=ind.trendM15;
   const c15=s.candles[15]||[],c60=s.candles[60]||[];
   const atr=ind.atr||calcATR(c60)||calcATR(c15)||price*0.002;
-  const atr15=calcATR(c15)||price*0.002;
 
   // Боковик
   const sideways=(h1==='neutral'||h1==='unknown')&&(m30==='neutral'||m30==='unknown');
-  if(sideways)return{status:'sideways',msg:'⏸️ БОКОВИК',detail:'H1 и M30 нейтральны. Ждём пробой.',color:'var(--warn)',price,atr};
+  if(sideways)return{status:'sideways',msg:'⏸️ БОКОВИК',detail:'H1 и M30 нейтральны. Ждём пробой уровня.',color:'var(--warn)',price,atr};
 
-  // Направление
   const bV=[h4==='bull',h1==='bull',m30==='bull',m15==='bull'].filter(Boolean).length;
   const brV=[h4==='bear',h1==='bear',m30==='bear',m15==='bear'].filter(Boolean).length;
   const h4ag=(bV>brV&&h4==='bear')||(brV>bV&&h4==='bull');
@@ -1154,68 +1228,203 @@ function calcSmartEntry(sym,ind){
   if(bV<2&&brV<2)return{status:'wait',msg:'⏳ ЖДЁМ СИГНАЛА',detail:`BUY:${bV}/4 · SELL:${brV}/4`,color:'var(--m2)',price,atr};
 
   const dir=bV>=brV?'Buy':'Sell';const isBuy=dir==='Buy';
+  const lvls=ind.lvls||detectLevels(sym);
+  const fib=ind.fib||detectFib(sym);
+  const vwap=ind.vwap;
+  const ob=detectOB(sym,dir);
+  const fvg=detectFVG(sym,dir);
 
-  // ТВХ
-  const entry=+(isBuy?price+atr15*0.05:price-atr15*0.05).toFixed(2);
+  // ══════════════════════════════════════════════════
+  // ЛОГИКА ОТКАТНОГО ВХОДА (GMA стиль)
+  // ТВХ ставится НА УРОВЕНЬ поддержки/OB/FVG/MA
+  // а не на текущую цену
+  // ══════════════════════════════════════════════════
 
-  // SL — приоритет: уровни S/R > Фибо 78.6% > ATR
+  // Собираем все потенциальные зоны входа
+  const entryZones=[];
+
+  // 1. Order Block — самый приоритетный
+  if(ob.found){
+    const obPrice=parseFloat(ob.label.replace('OB @ ',''));
+    if(obPrice>0){
+      const dist=Math.abs(price-obPrice)/price;
+      entryZones.push({price:obPrice,label:'OB (Order Block)',priority:10,dist});}
+  }
+
+  // 2. FVG имбаланс — зона притяжения
+  if(fvg.found){
+    const fvgPrice=parseFloat(fvg.label.replace(/.*@ /,''));
+    if(fvgPrice>0){
+      const dist=Math.abs(price-fvgPrice)/price;
+      entryZones.push({price:fvgPrice,label:'FVG зона',priority:9,dist});}
+  }
+
+  // 3. Фибо 61.8% (золотое сечение) — лучший откат
+  if(fib&&fib.found){
+    const f618=fib.levels.find(l=>l.r===0.618);
+    const f50=fib.levels.find(l=>l.r===0.5);
+    const f382=fib.levels.find(l=>l.r===0.382);
+    if(f618){const dist=Math.abs(price-f618.price)/price;entryZones.push({price:f618.price,label:'Fib 61.8% 🥇',priority:8,dist});}
+    if(f50){const dist=Math.abs(price-f50.price)/price;entryZones.push({price:f50.price,label:'Fib 50.0%',priority:7,dist});}
+    if(f382){const dist=Math.abs(price-f382.price)/price;entryZones.push({price:f382.price,label:'Fib 38.2%',priority:6,dist});}
+  }
+
+  // 4. MA30 как динамическая поддержка/сопротивление (GMA стиль)
+  if(lvls.ma30){
+    const dist=Math.abs(price-lvls.ma30)/price;
+    entryZones.push({price:lvls.ma30,label:'MA30 (динам.)',priority:7,dist});
+  }
+
+  // 5. MA90 как более сильная динамическая зона
+  if(lvls.ma90){
+    const dist=Math.abs(price-lvls.ma90)/price;
+    entryZones.push({price:lvls.ma90,label:'MA90 (динам.)',priority:6,dist});
+  }
+
+  // 6. VWAP как институциональный уровень
+  if(vwap){
+    const dist=Math.abs(price-vwap.vwap)/price;
+    entryZones.push({price:vwap.vwap,label:'VWAP',priority:5,dist});
+  }
+
+  // 7. S/R уровни исторические
+  if(isBuy&&lvls.sup.length){
+    lvls.sup.forEach(lv=>{
+      const dist=Math.abs(price-lv.price)/price;
+      entryZones.push({price:lv.price,label:lv.label||`S/R $${lv.price}`,priority:3+Math.min(lv.str,3),dist});
+    });
+  } else if(!isBuy&&lvls.res.length){
+    lvls.res.forEach(lv=>{
+      const dist=Math.abs(price-lv.price)/price;
+      entryZones.push({price:lv.price,label:lv.label||`S/R $${lv.price}`,priority:3+Math.min(lv.str,3),dist});
+    });
+  }
+
+  // Психологический уровень
+  if(lvls.psych){
+    const dist=Math.abs(price-lvls.psych.price)/price;
+    entryZones.push({price:lvls.psych.price,label:lvls.psych.label,priority:5,dist});
+  }
+
+  // ── Выбираем лучшую зону входа ──
+  // Фильтруем: для BUY — зоны НИЖЕ текущей цены (куда цена может откатить)
+  //            для SELL — зоны ВЫШЕ текущей цены
+  const MAX_DIST=0.04; // максимум 4% от текущей цены
+  const validZones=entryZones.filter(z=>{
+    if(isBuy)return z.price<price&&(price-z.price)/price<=MAX_DIST;
+    else return z.price>price&&(z.price-price)/price<=MAX_DIST;
+  }).sort((a,b)=>{
+    // Приоритет: сначала по приоритету, потом по близости
+    if(b.priority!==a.priority)return b.priority-a.priority;
+    return a.dist-b.dist;
+  });
+
+  // Если нет зоны для отката — используем текущую цену (цена уже у уровня)
+  let entry,entryLabel,entryMode;
+  if(validZones.length>0&&validZones[0].dist>0.003){
+    // Есть зона для отката — ставим ТВХ на неё
+    const zone=validZones[0];
+    entry=+(isBuy?zone.price+atr*0.1:zone.price-atr*0.1).toFixed(2);
+    entryLabel=`${zone.label}`;
+    entryMode='pullback'; // ждём откат
+  } else if(validZones.length>0&&validZones[0].dist<=0.003){
+    // Цена УЖЕ у уровня — можно входить сейчас
+    entry=+(isBuy?price+atr*0.05:price-atr*0.05).toFixed(2);
+    entryLabel=validZones[0].label+' (цена у уровня)';
+    entryMode='now'; // входить сейчас
+  } else {
+    // Нет подходящих уровней — ATR-based
+    entry=+(isBuy?price+atr*0.05:price-atr*0.05).toFixed(2);
+    entryLabel='ATR';
+    entryMode='now';
+  }
+
+  // SL — за ближайшим уровнем ниже зоны входа
   let sl=calcSL(entry,atr,isBuy,price);let slSrc='ATR';
-  if(isBuy&&ind.lvls?.sup.length){
-    const ns=ind.lvls.sup[0];const sl2=+(ns.price-atr*0.3).toFixed(2);
-    if(Math.abs(entry-sl2)/price<=getRisk()*1.5)sl2>sl?(sl=sl2,slSrc=`S/R $${ns.price.toFixed(2)}`):null;}
-  else if(!isBuy&&ind.lvls?.res.length){
-    const nr=ind.lvls.res[0];const sl2=+(nr.price+atr*0.3).toFixed(2);
-    if(Math.abs(entry-sl2)/price<=getRisk()*1.5)sl2<sl?(sl=sl2,slSrc=`S/R $${nr.price.toFixed(2)}`):null;}
-  if(ind.fib?.found){const f786=ind.fib.levels.find(l=>l.r===0.786);
-    if(f786){const sl2=+(isBuy?f786.price-atr*0.2:f786.price+atr*0.2).toFixed(2);
-      const r2=Math.abs(entry-sl2)/price;if(r2<=getRisk()*1.5&&r2>0.001){if((isBuy&&sl2>sl)||(!isBuy&&sl2<sl)){sl=sl2;slSrc='Fib 78.6%';}}}}
+  if(isBuy&&lvls.sup.length){
+    // SL ниже ближайшей поддержки ниже ТВХ
+    const supBelowEntry=lvls.sup.filter(l=>l.price<entry);
+    if(supBelowEntry.length){const ns=supBelowEntry[0];const sl2=+(ns.price-atr*0.3).toFixed(2);if(Math.abs(entry-sl2)/price<=getRisk()*2){sl=sl2;slSrc=`За S/R $${ns.price.toFixed(2)}`;}}
+  } else if(!isBuy&&lvls.res.length){
+    const resAboveEntry=lvls.res.filter(l=>l.price>entry);
+    if(resAboveEntry.length){const nr=resAboveEntry[0];const sl2=+(nr.price+atr*0.3).toFixed(2);if(Math.abs(entry-sl2)/price<=getRisk()*2){sl=sl2;slSrc=`За R $${nr.price.toFixed(2)}`;}}
+  }
+  if(lvls.ma30&&isBuy&&lvls.ma30<entry){const sl2=+(lvls.ma30-atr*0.2).toFixed(2);if(Math.abs(entry-sl2)/price<=getRisk()*2){sl=sl2;slSrc='За MA30';}}
+  if(lvls.ma90&&isBuy&&lvls.ma90<entry){const sl2=+(lvls.ma90-atr*0.2).toFixed(2);if(Math.abs(entry-sl2)/price<=getRisk()*2){sl=sl2;slSrc='За MA90';}}
 
   const slDist=Math.abs(entry-sl);
 
-  // TP — приоритет: Фибо расширения > уровни S/R > ATR
+  // TP — по уровням сопротивления/поддержки и Фибо
   let tp1,tp2,tp3,tp1Src='ATR',tp2Src='ATR',tp3Src='ATR';
-  if(ind.fib?.found&&ind.fib.exts?.length>=3){
-    const[f1,f2,f3]=ind.fib.exts;
-    if((isBuy&&ind.fib.isBull)||(!isBuy&&!ind.fib.isBull)){
+  if(fib&&fib.found&&fib.exts?.length>=3){
+    const[f1,f2,f3]=fib.exts;
+    if((isBuy&&fib.isBull)||(!isBuy&&!fib.isBull)){
       tp1=+f1.price.toFixed(2);tp1Src='Fib 127.2%';
       tp2=+f2.price.toFixed(2);tp2Src='Fib 161.8%🥇';
       tp3=+f3.price.toFixed(2);tp3Src='Fib 200%';}}
   if(!tp1||Math.abs(tp1-entry)<slDist*0.5){
-    if(isBuy&&ind.lvls?.res.length){tp1=+(ind.lvls.res[0]?.price||entry+slDist*1.5).toFixed(2);tp1Src='Сопр.';tp2=+(ind.lvls.res[1]?.price||entry+slDist*2.5).toFixed(2);tp2Src='Сопр.2';tp3=+(entry+slDist*4).toFixed(2);}
-    else if(!isBuy&&ind.lvls?.sup.length){tp1=+(ind.lvls.sup[0]?.price||entry-slDist*1.5).toFixed(2);tp1Src='Подд.';tp2=+(ind.lvls.sup[1]?.price||entry-slDist*2.5).toFixed(2);tp2Src='Подд.2';tp3=+(entry-slDist*4).toFixed(2);}
-    else{tp1=+(isBuy?entry+slDist*1.5:entry-slDist*1.5).toFixed(2);tp2=+(isBuy?entry+slDist*2.5:entry-slDist*2.5).toFixed(2);tp3=+(isBuy?entry+slDist*4:entry-slDist*4).toFixed(2);}}
-  if(!tp1||(isBuy&&tp1<entry)||(!isBuy&&tp1>entry)){tp1=+(isBuy?entry+slDist*1.5:entry-slDist*1.5).toFixed(2);tp1Src='ATR';}
+    if(isBuy&&lvls.res.length){
+      tp1=+(lvls.res[0]?.price||entry+slDist*1.5).toFixed(2);tp1Src=`R $${lvls.res[0]?.price.toFixed(0)||''}`;
+      tp2=+(lvls.res[1]?.price||entry+slDist*2.5).toFixed(2);tp2Src=lvls.res[1]?`R $${lvls.res[1].price.toFixed(0)}`:'ATR';
+      tp3=+(entry+slDist*4).toFixed(2);}
+    else if(!isBuy&&lvls.sup.length){
+      tp1=+(lvls.sup[0]?.price||entry-slDist*1.5).toFixed(2);tp1Src=`S $${lvls.sup[0]?.price.toFixed(0)||''}`;
+      tp2=+(lvls.sup[1]?.price||entry-slDist*2.5).toFixed(2);tp2Src=lvls.sup[1]?`S $${lvls.sup[1].price.toFixed(0)}`:'ATR';
+      tp3=+(entry-slDist*4).toFixed(2);}
+  }
+  // MA уровни как TP если нет других
+  if(!tp1||Math.abs(tp1-entry)<slDist*0.5){
+    tp1=+(isBuy?entry+slDist*1.5:entry-slDist*1.5).toFixed(2);tp1Src='ATR';
+    tp2=+(isBuy?entry+slDist*2.5:entry-slDist*2.5).toFixed(2);tp2Src='ATR';
+    tp3=+(isBuy?entry+slDist*4:entry-slDist*4).toFixed(2);tp3Src='ATR';}
+  if(!tp1||(isBuy&&tp1<entry)||(!isBuy&&tp1>entry)){
+    tp1=+(isBuy?entry+slDist*1.5:entry-slDist*1.5).toFixed(2);tp1Src='ATR';}
+
+  // Ликвидность как цель TP — цена идёт к скоплению стоп-лоссов
+  if(ind.liq&&ind.liq.found){
+    const liqAbove=ind.liq.zones.filter(z=>z.above&&z.price>entry).sort((a,b)=>a.price-b.price);
+    const liqBelow=ind.liq.zones.filter(z=>!z.above&&z.price<entry).sort((a,b)=>b.price-a.price);
+    if(isBuy&&liqAbove.length){
+      const liqTP=liqAbove[0].price;
+      if(Math.abs(liqTP-entry)>slDist*0.8){
+        if(!tp1||(liqTP>entry&&liqTP<tp1)){tp1=+liqTP.toFixed(2);tp1Src='Ликвидность 💧';}
+        else if(!tp2||(liqTP>tp1)){tp2=+liqTP.toFixed(2);tp2Src='Ликвидность 💧';}}}
+    if(!isBuy&&liqBelow.length){
+      const liqTP=liqBelow[0].price;
+      if(Math.abs(liqTP-entry)>slDist*0.8){
+        if(!tp1||(liqTP<entry&&liqTP>tp1)){tp1=+liqTP.toFixed(2);tp1Src='Ликвидность 💧';}
+        else if(!tp2||(liqTP<tp1)){tp2=+liqTP.toFixed(2);tp2Src='Ликвидность 💧';}}}}
 
   const rr=slDist>0?(Math.abs(tp1-entry)/slDist).toFixed(1):'—';
   const risk=actualRisk(entry,sl).toFixed(2);
-
-  // Поезд ушёл?
-  const prog=Math.abs(price-entry)/(Math.abs(tp1-entry)||1);
-  if(prog>0.6&&((isBuy&&price>entry)||(!isBuy&&price<entry))){
-    const re=+(isBuy?price-atr*0.8:price+atr*0.8).toFixed(2);
-    const rSL=calcSL(re,atr,isBuy,price);const rD=Math.abs(re-rSL);
-    const rTP1=+(isBuy?re+rD*1.5:re-rD*1.5).toFixed(2);
-    const rTP2=+(isBuy?re+rD*2.5:re-rD*2.5).toFixed(2);
-    const rTP3=+(isBuy?re+rD*4:re-rD*4).toFixed(2);
-    return{status:'wait_pullback',msg:'🚂 ПОЕЗД УШЁЛ — ЖДЁМ ОТКАТ',
-      detail:`Цена прошла ${Math.round(prog*100)}% от ТВХ к TP1.`,color:'var(--warn)',dir,
-      entry:`$${re}`,sl:`$${rSL}`,tp1:`$${rTP1}`,tp2:`$${rTP2}`,tp3:`$${rTP3}`,
-      rr:`1:${rD>0?(Math.abs(rTP1-re)/rD).toFixed(1):'—'}`,risk:actualRisk(re,rSL).toFixed(2),
-      slSrc:'ATR',tp1Src:'ATR',tp2Src:'ATR',tp3Src:'ATR',
-      entryLabel:'ВХОД ПОСЛЕ ОТКАТА',price,atr};}
-
   const urgency=bV+brV>=4?'high':bV+brV>=3?'medium':'low';
-  return{status:'active',
-    msg:`${isBuy?'▲ BUY':'▼ SELL'} — ${urgency==='high'?'🔥 СИЛЬНЫЙ':urgency==='medium'?'✅ ХОРОШИЙ':'🟡 УМЕРЕННЫЙ'} СИГНАЛ`,
-    detail:`SL за ${slSrc} · TP1 ${tp1Src} · TP2 ${tp2Src}`,
-    color:isBuy?'var(--buy)':'var(--sell)',
-    dir,entry:`$${entry}`,sl:`$${sl}`,tp1:`$${tp1}`,tp2:`$${tp2}`,tp3:`$${tp3}`,
-    rr:`1:${rr}`,risk,slSrc,tp1Src,tp2Src,tp3Src,
-    entryLabel:'ТВХ',urgency,price,atr};}
 
-// ════════════════════════════════════════════════════════
-// ПРОГРЕСС ОТРАБОТКИ
-// ════════════════════════════════════════════════════════
+  // Определяем детальное описание
+  let detail,statusMsg,statusColor;
+  if(entryMode==='pullback'){
+    const pctToZone=((Math.abs(price-entry)/price)*100).toFixed(2);
+    statusMsg=`⏳ ЖДЁМ ОТКАТ к ${entryLabel}`;
+    statusColor='var(--warn)';
+    detail=`ТВХ на уровне ${entryLabel} · Текущая цена на ${pctToZone}% ${isBuy?'выше':'ниже'} зоны входа · SL за ${slSrc}`;
+  } else {
+    statusMsg=`${isBuy?'▲ BUY':'▼ SELL'} — ${urgency==='high'?'🔥 СИЛЬНЫЙ':urgency==='medium'?'✅ ХОРОШИЙ':'🟡 УМЕРЕННЫЙ'} СИГНАЛ`;
+    statusColor=isBuy?'var(--buy)':'var(--sell)';
+    detail=`ТВХ у ${entryLabel} · SL за ${slSrc} · TP1: ${tp1Src} · TP2: ${tp2Src}`;
+  }
+
+  return{
+    status:entryMode==='pullback'?'wait_pullback':'active',
+    msg:statusMsg,detail,color:statusColor,
+    dir,entry:`$${entry}`,sl:`$${sl}`,
+    tp1:`$${tp1}`,tp2:`$${tp2}`,tp3:`$${tp3}`,
+    rr:`1:${rr}`,risk,
+    slSrc,tp1Src,tp2Src,tp3Src,
+    entryLabel,entryMode,
+    validZones:validZones.slice(0,3),
+    price,atr,urgency};
+}
+
+
 function calcProgress(sym,dir,entryN,tp1N,slN){
   const price=ST[sym].price||0;
   if(!price||!entryN||!tp1N)return{progress:0,relevance:100,label:'—',color:'var(--m2)',advice:''};
@@ -1421,6 +1630,18 @@ function drawChart(){
   if(ind.imb){ind.imb.forEach(im=>{if(!im.top||!im.bot)return;const t=Math.min(im.top,maxP),b=Math.max(im.bot,minP);if(t<minP||b>maxP)return;const y1=ty(t),y2=ty(b);mctx.fillStyle=im.type==='bull'?'rgba(0,230,118,0.05)':'rgba(255,23,68,0.05)';mctx.fillRect(pad.l,y1,cW,y2-y1);});}
   // Ликвидность
   if(ind.liq&&ind.liq.found){ind.liq.zones.forEach(z=>{if(z.price<minP||z.price>maxP)return;const y=ty(z.price);mctx.strokeStyle=z.type==='sell_side'?'rgba(255,23,68,0.5)':'rgba(0,230,118,0.5)';mctx.lineWidth=1.5;mctx.setLineDash([6,3]);mctx.beginPath();mctx.moveTo(pad.l,y);mctx.lineTo(W-pad.r,y);mctx.stroke();mctx.setLineDash([]);mctx.fillStyle=z.type==='sell_side'?'rgba(255,23,68,0.7)':'rgba(0,230,118,0.7)';mctx.font='8px JetBrains Mono';mctx.textAlign='right';mctx.fillText(`💧×${z.cnt}`,W-pad.r-3,y-2);});}
+  // MA30 и MA90 на графике (как в GMA системе)
+  if(ind.lvls){
+    const drawMA=(val,col,lbl)=>{if(!val||val<minP||val>maxP)return;const y=ty(val);mctx.strokeStyle=col;mctx.lineWidth=1.5;mctx.setLineDash([6,3]);mctx.beginPath();mctx.moveTo(pad.l,y);mctx.lineTo(W-pad.r,y);mctx.stroke();mctx.setLineDash([]);mctx.fillStyle=col;mctx.font='bold 9px JetBrains Mono';mctx.textAlign='left';mctx.fillText(lbl,pad.l+3,y-3);};
+    drawMA(ind.lvls.ma30,'rgba(255,165,0,0.8)','MA30');
+    drawMA(ind.lvls.ma90,'rgba(255,99,71,0.8)','MA90');
+  }
+  // MA30 и MA90 на графике (динамические уровни как в GMA)
+  if(ind.lvls){
+    const drawMA=(val,col,lbl)=>{if(!val||val<minP||val>maxP)return;const y=ty(val);mctx.strokeStyle=col;mctx.lineWidth=1.5;mctx.setLineDash([6,3]);mctx.beginPath();mctx.moveTo(pad.l,y);mctx.lineTo(W-pad.r,y);mctx.stroke();mctx.setLineDash([]);mctx.fillStyle=col;mctx.font='bold 9px JetBrains Mono';mctx.textAlign='left';mctx.fillText(lbl,pad.l+3,y-3);};
+    if(ind.lvls.ma30)drawMA(ind.lvls.ma30,'rgba(255,165,0,0.85)','MA30');
+    if(ind.lvls.ma90)drawMA(ind.lvls.ma90,'rgba(255,99,71,0.85)','MA90');
+  }
   // BB область
   if(ind.bb){const ub=Math.min(ind.bb.upper,maxP),lb=Math.max(ind.bb.lower,minP);mctx.fillStyle='rgba(41,121,255,0.03)';mctx.fillRect(pad.l,ty(ub),cW,ty(lb)-ty(ub));}
   // Градиент под линией
@@ -1548,8 +1769,13 @@ function updateSignalBlock(dir,score,ind){
   } else if(exh.warn){
     icon='⚠️';title=`ОСТОРОЖНО — ${sl}`;sub=exh.msg+' · Уменьшите объём';
     bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.35)';titleCol='var(--warn)';entryStatus='early';
+  } else if(smart.status==='wait_pullback'&&smart.entryMode==='pullback'){
+    // Новая логика: ждём откат к уровню
+    icon='⏳';title=`ЖДЁМ ОТКАТ — ${sl}`;
+    sub=smart.detail||`ТВХ на уровне поддержки · ждём цену у ${smart.entryLabel||'уровня'}`;
+    bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.3)';titleCol='var(--warn)';entryStatus='pullback';
   } else if(smart.status==='wait_pullback'){
-    icon='🚂';title='ПОЗДНО ВХОДИТЬ';sub='Цена ушла далеко от ТВХ — ждём откат для нового входа';
+    icon='🚂';title='ПОЗДНО ВХОДИТЬ';sub='Цена ушла далеко от ТВХ — ждём откат';
     bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.3)';titleCol='var(--warn)';entryStatus='late';
   } else if(score>=8&&mtfCnt>=2&&whaleOk){
     icon=isBuy?'🚀':'💥';title=`ВХОДИТЬ! ${sl} ${SYM_NAME[sym]}`;
@@ -1608,6 +1834,7 @@ function updateSignalBlock(dir,score,ind){
   else if(!c1)advice='⏳ Ждём чёткого H1 тренда перед входом';
   else if(dispProg.progress>=75)advice=dispProg.advice;
   else if(whaleOk)advice=`🐋 Кит подтверждает ${sl}! ${dispProg.advice}. После TP1 — перенесите SL в безубыток`;
+  else if(entryStatus==='pullback')advice=`⏳ Ждём откат цены к уровню ${smart.entryLabel||'поддержки'}. ТВХ: ${smart.entry}. Как цена дойдёт до уровня и даст бычью свечу — входим`;
   else if(entryStatus==='wait_whale')advice=`📈 Технический сигнал без кита. Войдите на 30% от обычной суммы. Если кит подтвердит — добавьте остаток. После TP1 — перенесите SL в безубыток`;
   else advice=dispProg.advice+(dispProg.progress<50?' · После TP1 — перенесите SL в безубыток':'');
   const ae=document.getElementById('sig-advice');
