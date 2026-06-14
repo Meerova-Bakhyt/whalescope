@@ -432,6 +432,20 @@ header{background:var(--panel);border-bottom:1px solid var(--border);padding:10p
       </div>
     </div>
 
+    <!-- ═══ ПЕРЕКЛЮЧАТЕЛЬ ПОДРОБНОГО АНАЛИЗА ═══ -->
+    <div onclick="toggleKitchen()" id="kitchen-toggle" style="cursor:pointer;background:var(--p2);border:1px solid var(--b2);border-radius:10px;padding:13px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;transition:all 0.2s">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">🔬</span>
+        <div>
+          <div style="font-family:var(--font);font-size:13px;font-weight:700;color:var(--text)">Подробный анализ</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--m2)">Индикаторы · Уровни · Паттерны · Фильтры</div>
+        </div>
+      </div>
+      <span id="kitchen-arrow" style="font-size:14px;color:var(--m2);transition:transform 0.3s">▼</span>
+    </div>
+
+    <div id="kitchen-content" style="display:none">
+
     <!-- ═══ БЛОК 2: МАСТЕР-ФИЛЬТР ═══ -->
     <div class="section-title">🏆 Мастер-фильтр</div>
     <div class="card mb12" id="mf-box" style="border:2px solid var(--b2)">
@@ -643,6 +657,8 @@ header{background:var(--panel);border-bottom:1px solid var(--border);padding:10p
         </div>
       </div>
     </div>
+
+    </div><!-- /kitchen-content -->
 
     <!-- ═══ БЛОК 6: ЛЕНТА ═══ -->
     <div class="section-title">🐋 Крупные сделки</div>
@@ -1853,6 +1869,23 @@ function hierarchyDecision(sym,ind){
   const sr=ind.stochRsi;
   const srOk=sr&&(isBuy?(sr.K<40&&(sr.cross?.type==='bull'||sr.K>sr.D)):(sr.K>60&&(sr.cross?.type==='bear'||sr.K<sr.D)));
 
+  // ── РАННЯЯ ПРОВЕРКА ИСТОЩЕНИЯ ──
+  // Проверяем актуальность тренда ДО статусов ожидания
+  // Если тренд истощён — нет смысла ждать свечу
+  const earlyStage=getTrendStage(sym,ind);
+  if(earlyStage.relevance<15){
+    // Тренд мёртв — поезд ушёл
+    return{decision:'too_late',level:3,dir,zone,
+      reason:`Тренд истощён (актуальность ${earlyStage.relevance}%) — поезд ушёл, движение выдохлось`,
+      l1ok:true,l2ok:true,l3ok:false,strength:earlyStage,atZone};
+  }
+  if(earlyStage.relevance<40){
+    // Тренд стареет — позновато даже ждать свечу
+    return{decision:'getting_late',level:3,dir,zone,
+      reason:`Тренд стареет (актуальность ${earlyStage.relevance}%) — поздновато, движение может быть слабым`,
+      l1ok:true,l2ok:true,l3ok:false,strength:earlyStage,atZone};
+  }
+
   if(!atZone){
     // Цена ещё не дошла до зоны — ЖДЁМ ОТКАТ
     return{decision:'wait_pullback',level:3,dir,zone,
@@ -1996,52 +2029,44 @@ function updateSignalBlock(dir,score,ind){
   let icon,title,sub,bgC,bdC,titleCol,entryStatus;
 
   // ── РЕШЕНИЕ ПО ИЕРАРХИИ ──
-  if(H.decision==='no_trade'){
-    icon='🚫';title='НЕ ТОРГОВАТЬ';sub=H.reason;
-    bgC='rgba(255,23,68,0.08)';bdC='rgba(255,23,68,0.4)';titleCol='var(--sell)';entryStatus='no';
-  } else if(H.decision==='wait'){
-    icon='⏳';title='ОЖИДАНИЕ ДАННЫХ';sub=H.reason;
-    bgC='rgba(255,255,255,0.02)';bdC='var(--b2)';titleCol='var(--m2)';entryStatus='wait';
-  } else if(H.decision==='no_zone'){
-    icon='⏳';title=`РАНО — ${sl}`;
-    sub=`✅ Тренд ${isBuy?'бычий':'медвежий'} · ${H.reason}`;
-    bgC='rgba(255,171,0,0.05)';bdC='rgba(255,171,0,0.3)';titleCol='var(--warn)';entryStatus='early';
-  } else if(H.decision==='wait_pullback'){
-    icon='⏳';title=`ЖДЁМ ОТКАТ — ${sl}`;
-    sub=`✅ Тренд ${isBuy?'бычий':'медвежий'} (${H.strength.label}) · ${H.reason}`;
-    bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.35)';titleCol='var(--warn)';entryStatus='pullback';
+  // ═══════════════════════════════════════════════
+  // СВЁРТКА В 5 ЧИСТЫХ ВЕРДИКТОВ ДЛЯ ПОЛЬЗОВАТЕЛЯ
+  // Вся "кухня" анализа — внутри, наружу только вердикт
+  // ═══════════════════════════════════════════════
+  const smN=SYM_NAME[sym];
+  if(H.decision==='enter'&&!H.cautionMode){
+    // 🚀 ВХОДИТЬ
+    icon=isBuy?'🚀':'💥';title=`ВХОДИТЬ — ${sl} ${smN}`;
+    sub=`Свежий вход · R:R 1:${H.qRR} · Полный объём`;
+    bgC=isBuy?'rgba(0,230,118,0.1)':'rgba(255,23,68,0.1)';bdC=col;titleCol=col;entryStatus='enter';
+  } else if(H.decision==='enter'&&H.cautionMode){
+    // 📈 ОСТОРОЖНО
+    icon='📈';title=`ОСТОРОЖНО — ${sl} ${smN}`;
+    sub=`Вход возможен · R:R 1:${H.qRR} · Объём 30%`;
+    bgC=isBuy?'rgba(0,230,118,0.06)':'rgba(255,23,68,0.06)';bdC='rgba(255,171,0,0.45)';titleCol='var(--warn)';entryStatus='enter_caution';
+  } else if(H.decision==='getting_late'){
+    // 📈 ОСТОРОЖНО (тренд стареет)
+    icon='📈';title=`ОСТОРОЖНО — ${sl} ${smN}`;
+    sub=`Тренд стареет · Вход малым объёмом (20-30%) или пропустить`;
+    bgC=isBuy?'rgba(0,230,118,0.05)':'rgba(255,23,68,0.05)';bdC='rgba(255,136,0,0.4)';titleCol='#ff8800';entryStatus='getting_late';
   } else if(H.decision==='wait_confirm'){
-    icon='⏰';title=`ПОЧТИ ГОТОВ — ЖДЁМ СВЕЧУ`;
-    sub=`✅ Цена у зоны ${H.zone.label} · Не входить пока. ${H.reason}`;
-    bgC='rgba(41,121,255,0.07)';bdC='rgba(41,121,255,0.4)';titleCol='var(--accent)';entryStatus='wait_confirm';
-  } else if(H.decision==='too_late'){
-    icon='🚂';title='ПОЗДНО — ПОЕЗД УШЁЛ';
-    sub=`⚠️ ${H.reason}`;
+    // ⏰ ПОЧТИ ГОТОВ
+    icon='⏰';title=`ПОЧТИ ГОТОВ — ${sl}`;
+    sub=`Цена у зоны · Ждём ${isBuy?'бычью (зелёную)':'медвежью (красную)'} свечу`;
+    bgC='rgba(41,121,255,0.07)';bdC='rgba(41,121,255,0.45)';titleCol='var(--accent)';entryStatus='wait_confirm';
+  } else if(H.decision==='too_late'||H.decision==='bad_rr'){
+    // 🚂 ПОЕЗД УШЁЛ
+    icon='🚂';title='ПОЕЗД УШЁЛ';
+    sub=H.decision==='bad_rr'?`Невыгодное соотношение риск/прибыль · Пропустить`:`Момент упущен · Ждём следующий сигнал`;
     bgC='rgba(255,171,0,0.07)';bdC='rgba(255,171,0,0.4)';titleCol='var(--warn)';entryStatus='too_late';
-  } else if(H.decision==='bad_rr'){
-    icon='⚠️';title='ПЛОХОЙ R:R — ПРОПУСТИТЬ';
-    sub=`${H.reason}`;
-    bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.35)';titleCol='var(--warn)';entryStatus='bad_rr';
-  } else if(H.decision==='enter'){
-    // ВХОД! Все 3 уровня пройдены + качество проверено
-    const cf=H.confidence;
-    if(H.cautionMode){
-      // Вход в середине тренда (33-66%) — малый объём
-      icon=isBuy?'📈':'📉';title=`ВХОДИТЬ ОСТОРОЖНО — ${sl} ${SYM_NAME[sym]}`;
-      sub=`✅ Все 3 уровня · Пройдено ${H.progressPct}% · R:R 1:${H.qRR} · Объём 30-50%`;
-      bgC=isBuy?'rgba(0,230,118,0.06)':'rgba(255,23,68,0.06)';bdC='rgba(255,171,0,0.4)';titleCol=col;entryStatus='enter_caution';
-    } else if(cf>=6){
-      icon=isBuy?'🚀':'💥';title=`ВХОДИТЬ! ${sl} ${SYM_NAME[sym]}`;
-      sub=`🏆 Все 3 уровня ✅ · Уверенность ${cf}/8 · Свежий вход (${H.progressPct}%) · R:R 1:${H.qRR}`;
-      bgC=isBuy?'rgba(0,230,118,0.1)':'rgba(255,23,68,0.1)';bdC=col;titleCol=col;entryStatus='enter';
-    } else {
-      icon=isBuy?'📈':'📉';title=`ВХОДИТЬ — ${sl} ${SYM_NAME[sym]}`;
-      sub=`✅ Все 3 уровня · Уверенность ${cf}/8 · Пройдено ${H.progressPct}% · R:R 1:${H.qRR}`;
-      bgC=isBuy?'rgba(0,230,118,0.08)':'rgba(255,23,68,0.08)';bdC=col;titleCol=col;entryStatus='enter';
-    }
   } else {
-    icon='🚫';title='НЕ ВХОДИТЬ';sub=H.reason||'Условия не выполнены';
-    bgC='rgba(255,23,68,0.04)';bdC='rgba(255,23,68,0.2)';titleCol='var(--sell)';entryStatus='no';
+    // ⏳ ЖДЁМ (no_trade, wait, no_zone, wait_pullback)
+    icon='⏳';title='ЖДЁМ';
+    if(H.decision==='no_trade')sub='Нет чёткого тренда · Наблюдаем';
+    else if(H.decision==='no_zone')sub=`Тренд ${isBuy?'вверх':'вниз'} · Ждём откат цены к зоне входа`;
+    else if(H.decision==='wait_pullback')sub=`Тренд ${isBuy?'вверх':'вниз'} · Ждём откат к зоне входа`;
+    else sub='Анализируем рынок';
+    bgC='rgba(255,255,255,0.02)';bdC='var(--b2)';titleCol='var(--m2)';entryStatus='wait';
   }
 
   const sd=document.getElementById('sig-dir-box');
@@ -2050,7 +2075,7 @@ function updateSignalBlock(dir,score,ind){
 
   // ТВХ — берём из зоны иерархии или из smart
   let entryVal='—',tp1='—',tp2='—',tp3='—',slVal='—',rr='—',tp1s='',tp2s='',tp3s='',sls='';
-  if(H.zone&&(H.decision==='wait_pullback'||H.decision==='wait_confirm'||H.decision==='enter'||H.decision==='too_late'||H.decision==='bad_rr')){
+  if(H.zone&&(H.decision==='wait_pullback'||H.decision==='wait_confirm'||H.decision==='enter'||H.decision==='too_late'||H.decision==='bad_rr'||H.decision==='getting_late')){
     // ТВХ на зоне отката
     const atr=ind.atr||price*0.002;
     const entry=+(isBuy?H.zone.price+atr*0.1:H.zone.price-atr*0.1).toFixed(2);
@@ -2085,6 +2110,7 @@ function updateSignalBlock(dir,score,ind){
   else if(H.decision==='wait_pullback')advice=`⏳ ${H.reason}. Когда цена дойдёт до уровня — ждите разворотную свечу, затем входите`;
   else if(H.decision==='wait_confirm')advice=`⏰ Цена у уровня ${H.zone.label}! Ждём подтверждение: бычью свечу (для BUY) или разворот StochRSI. Как появится — входим СРАЗУ`;
   else if(H.decision==='too_late')advice=`🚂 ${H.reason}. Лучше пропустить эту сделку и дождаться следующего свежего сигнала — вход в хвосте тренда часто заканчивается разворотом против вас`;
+  else if(H.decision==='getting_late')advice=`🟠 ${H.reason}. Если очень хотите войти — только малым объёмом (20-30%) и с близким SL. Но лучше поискать более свежий сигнал на другой паре`;
   else if(H.decision==='bad_rr')advice=`⚠️ ${H.reason}. Прибыль слишком мала относительно риска. Дождитесь сигнала с R:R хотя бы 1:2 — одна такая сделка покроет две неудачные`;
   else if(H.decision==='enter'&&H.cautionMode)advice=`📈 Вход разрешён, но тренд пройден на ${H.progressPct}%. Входите уменьшенным объёмом (30-50%). R:R 1:${H.qRR} это компенсирует. SL за уровень обязательно`;
   else if(H.decision==='enter')advice=`✅ ВХОД ПОДТВЕРЖДЁН! Свежий вход (пройдено ${H.progressPct}%), R:R 1:${H.qRR}. ${H.confItems.join(' · ')}. SL за уровень. После TP1 — перенесите SL в безубыток`;
@@ -2367,6 +2393,13 @@ function $c(id,v){const e=document.getElementById(id);if(e)e.style.color=v;}
 function $w(id,v,c){const e=document.getElementById(id);if(e){e.style.width=Math.min(100,Math.max(0,v))+'%';if(c)e.style.background=c;}}
 function fmtUSD(v){if(v>=1e9)return'$'+(v/1e9).toFixed(2)+'B';if(v>=1e6)return'$'+(v/1e6).toFixed(1)+'M';if(v>=1e3)return'$'+(v/1e3).toFixed(0)+'K';return'$'+v.toFixed(0);}
 function tick(){const d=new Date(Date.now()+5*3600000);$('clock',`${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}:${String(d.getUTCSeconds()).padStart(2,'0')}`);}
+function toggleKitchen(){
+  const c=document.getElementById('kitchen-content');
+  const a=document.getElementById('kitchen-arrow');
+  if(!c||!a)return;
+  if(c.style.display==='none'){c.style.display='block';a.style.transform='rotate(180deg)';}
+  else{c.style.display='none';a.style.transform='rotate(0deg)';}
+}
 setInterval(tick,1000);tick();
 
 // ════════════════════════════════════════════════════════
