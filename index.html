@@ -2011,8 +2011,8 @@ function updateSignalBlock(dir,score,ind){
     sub=`✅ Тренд ${isBuy?'бычий':'медвежий'} (${H.strength.label}) · ${H.reason}`;
     bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.35)';titleCol='var(--warn)';entryStatus='pullback';
   } else if(H.decision==='wait_confirm'){
-    icon='⏰';title=`ГОТОВ — ЖДЁМ СВЕЧУ — ${sl}`;
-    sub=`✅ Цена у зоны ${H.zone.label} · ${H.reason}`;
+    icon='⏰';title=`ПОЧТИ ГОТОВ — ЖДЁМ СВЕЧУ`;
+    sub=`✅ Цена у зоны ${H.zone.label} · Не входить пока. ${H.reason}`;
     bgC='rgba(41,121,255,0.07)';bdC='rgba(41,121,255,0.4)';titleCol='var(--accent)';entryStatus='wait_confirm';
   } else if(H.decision==='too_late'){
     icon='🚂';title='ПОЗДНО — ПОЕЗД УШЁЛ';
