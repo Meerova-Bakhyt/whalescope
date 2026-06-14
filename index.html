@@ -689,12 +689,12 @@ header{background:var(--panel);border-bottom:1px solid var(--border);padding:10p
 // ════════════════════════════════════════════════════════
 // КОНФИГУРАЦИЯ ИНСТРУМЕНТОВ
 // ════════════════════════════════════════════════════════
-const ALL_SYMS=['XAUUSDT','XAUTUSDT','BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','TONUSDT','LTCUSDT','LINKUSDT','TRXUSDT','SUIUSDT','KASUSDT','NEARUSDT','SHIBUSDT'];
-const SYM_COLOR={XAUUSDT:'#ffc107',XAUTUSDT:'#ffd54f',BTCUSDT:'#f7931a',ETHUSDT:'#7986cb',SOLUSDT:'#ab47bc',BNBUSDT:'#f0b90b',XRPUSDT:'#29b6f6',DOGEUSDT:'#c8a000',ADAUSDT:'#1565c0',AVAXUSDT:'#ef5350',TONUSDT:'#0088cc',LTCUSDT:'#bdbdbd',LINKUSDT:'#2979ff',TRXUSDT:'#e53935',SUIUSDT:'#4da2ff',KASUSDT:'#70c7ba',NEARUSDT:'#00c853',SHIBUSDT:'#e0a80d'};
-const SYM_NAME={XAUUSDT:'GOLD',XAUTUSDT:'XAUT',BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',TONUSDT:'TON',LTCUSDT:'LTC',LINKUSDT:'LINK',TRXUSDT:'TRX',SUIUSDT:'SUI',KASUSDT:'KAS',NEARUSDT:'NEAR',SHIBUSDT:'SHIB'};
-const SYM_ICON={XAUUSDT:'⬡',XAUTUSDT:'🥇',BTCUSDT:'₿',ETHUSDT:'⬡',SOLUSDT:'◎',BNBUSDT:'⬡',XRPUSDT:'✕',DOGEUSDT:'Ð',ADAUSDT:'₳',AVAXUSDT:'▲',TONUSDT:'💎',LTCUSDT:'Ł',LINKUSDT:'⬡',TRXUSDT:'⬡',SUIUSDT:'⬡',KASUSDT:'⬡',NEARUSDT:'⬡',SHIBUSDT:'🐕'};
-const SYM_GROUP={XAUUSDT:'Золото',XAUTUSDT:'Золото',BTCUSDT:'Крипто',ETHUSDT:'Крипто',SOLUSDT:'Крипто',BNBUSDT:'Крипто',XRPUSDT:'Крипто',DOGEUSDT:'Крипто',ADAUSDT:'Крипто',AVAXUSDT:'Крипто',TONUSDT:'Крипто',LTCUSDT:'Крипто',LINKUSDT:'Крипто',TRXUSDT:'Крипто',SUIUSDT:'Крипто',KASUSDT:'Крипто',NEARUSDT:'Крипто',SHIBUSDT:'Крипто'};
-const SYM_THRESH={XAUUSDT:100000,XAUTUSDT:50000,BTCUSDT:150000,ETHUSDT:50000,SOLUSDT:10000,BNBUSDT:10000,XRPUSDT:8000,DOGEUSDT:5000,ADAUSDT:5000,AVAXUSDT:8000,TONUSDT:5000,LTCUSDT:5000,LINKUSDT:5000,TRXUSDT:5000,SUIUSDT:5000,KASUSDT:3000,NEARUSDT:5000,SHIBUSDT:5000};
+const ALL_SYMS=['XAUUSDT','XAUTUSDT','BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','TONUSDT','LTCUSDT','LINKUSDT','TRXUSDT','SUIUSDT','KASUSDT','NEARUSDT','HYPEUSDT','APTUSDT','ARBUSDT','OPUSDT','WIFUSDT'];
+const SYM_COLOR={XAUUSDT:'#ffc107',XAUTUSDT:'#ffd54f',BTCUSDT:'#f7931a',ETHUSDT:'#7986cb',SOLUSDT:'#ab47bc',BNBUSDT:'#f0b90b',XRPUSDT:'#29b6f6',DOGEUSDT:'#c8a000',ADAUSDT:'#1565c0',AVAXUSDT:'#ef5350',TONUSDT:'#0088cc',LTCUSDT:'#bdbdbd',LINKUSDT:'#2979ff',TRXUSDT:'#e53935',SUIUSDT:'#4da2ff',KASUSDT:'#70c7ba',NEARUSDT:'#00c853',HYPEUSDT:'#9c27b0',APTUSDT:'#00bcd4',ARBUSDT:'#28a0f0',OPUSDT:'#ff0420',WIFUSDT:'#d4a373'};
+const SYM_NAME={XAUUSDT:'GOLD',XAUTUSDT:'XAUT',BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',TONUSDT:'TON',LTCUSDT:'LTC',LINKUSDT:'LINK',TRXUSDT:'TRX',SUIUSDT:'SUI',KASUSDT:'KAS',NEARUSDT:'NEAR',HYPEUSDT:'HYPE',APTUSDT:'APT',ARBUSDT:'ARB',OPUSDT:'OP',WIFUSDT:'WIF'};
+const SYM_ICON={XAUUSDT:'⬡',XAUTUSDT:'🥇',BTCUSDT:'₿',ETHUSDT:'⬡',SOLUSDT:'◎',BNBUSDT:'⬡',XRPUSDT:'✕',DOGEUSDT:'Ð',ADAUSDT:'₳',AVAXUSDT:'▲',TONUSDT:'💎',LTCUSDT:'Ł',LINKUSDT:'⬡',TRXUSDT:'⬡',SUIUSDT:'⬡',KASUSDT:'⬡',NEARUSDT:'⬡',HYPEUSDT:'🔷',APTUSDT:'🅰',ARBUSDT:'🔵',OPUSDT:'🔴',WIFUSDT:'🐶'};
+const SYM_GROUP={XAUUSDT:'Золото',XAUTUSDT:'Золото',BTCUSDT:'Крипто',ETHUSDT:'Крипто',SOLUSDT:'Крипто',BNBUSDT:'Крипто',XRPUSDT:'Крипто',DOGEUSDT:'Крипто',ADAUSDT:'Крипто',AVAXUSDT:'Крипто',TONUSDT:'Крипто',LTCUSDT:'Крипто',LINKUSDT:'Крипто',TRXUSDT:'Крипто',SUIUSDT:'Крипто',KASUSDT:'Крипто',NEARUSDT:'Крипто',HYPEUSDT:'Крипто',APTUSDT:'Крипто',ARBUSDT:'Крипто',OPUSDT:'Крипто',WIFUSDT:'Крипто'};
+const SYM_THRESH={XAUUSDT:100000,XAUTUSDT:50000,BTCUSDT:150000,ETHUSDT:50000,SOLUSDT:10000,BNBUSDT:10000,XRPUSDT:8000,DOGEUSDT:5000,ADAUSDT:5000,AVAXUSDT:8000,TONUSDT:5000,LTCUSDT:5000,LINKUSDT:5000,TRXUSDT:5000,SUIUSDT:5000,KASUSDT:3000,NEARUSDT:5000,HYPEUSDT:8000,APTUSDT:5000,ARBUSDT:5000,OPUSDT:5000,WIFUSDT:5000};
 
 // ════════════════════════════════════════════════════════
 // СОСТОЯНИЕ
@@ -1588,8 +1588,8 @@ function updatePC(sym,price,prev){
   if(!pe||!price)return;
   let dp=2;
   if(sym==='BTCUSDT')dp=0;
-  else if(['DOGEUSDT','ADAUSDT','XRPUSDT','TRXUSDT','KASUSDT','SHIBUSDT'].includes(sym))dp=6;
-  else if(['SUIUSDT','NEARUSDT','LINKUSDT'].includes(sym))dp=4;
+  else if(['DOGEUSDT','ADAUSDT','XRPUSDT','TRXUSDT','KASUSDT','WIFUSDT'].includes(sym))dp=6;
+  else if(['SUIUSDT','NEARUSDT','LINKUSDT','ARBUSDT','OPUSDT','APTUSDT','HYPEUSDT'].includes(sym))dp=4;
   pe.textContent='$'+price.toLocaleString('en-US',{minimumFractionDigits:dp,maximumFractionDigits:dp});
   if(prev&&prev!==price){
     const d=((price-prev)/prev*100).toFixed(3),up=price>prev;
@@ -1785,7 +1785,11 @@ function getTrendStrength(sym,ind){
 // ════════════════════════════════════════════════════════
 function hierarchyDecision(sym,ind){
   const price=ST[sym].price||0;
-  if(!price)return{decision:'wait',level:0,reason:'Нет данных'};
+  const candles15=ST[sym].candles[15]||[];
+  // Защита от пустых данных — если нет цены или мало свечей
+  if(!price||candles15.length<20){
+    return{decision:'loading',level:0,reason:'Загрузка данных с биржи...'};
+  }
 
   // ═══════════════════════════════════════════
   // УРОВЕНЬ 1 — РЕШАЮЩИЙ: можно ли вообще торговать?
@@ -2030,6 +2034,24 @@ function updateSignalBlock(dir,score,ind){
 
   // ── РЕШЕНИЕ ПО ИЕРАРХИИ ──
   // ═══════════════════════════════════════════════
+  if(H.decision==='loading'){
+    // Нет данных — показываем загрузку, НЕ выдумываем вердикт
+    icon='⏳';title='ЗАГРУЗКА ДАННЫХ';
+    sub='Получаем данные с биржи Bybit...';
+    bgC='rgba(255,255,255,0.02)';bdC='var(--b2)';titleCol='var(--m2)';entryStatus='loading';
+    const sd0=document.getElementById('sig-dir-box');
+    if(sd0){sd0.style.background=bgC;sd0.style.border=`1px solid ${bdC}`;}
+    $('sig-icon',icon);$('sig-title',title);$c('sig-title',titleCol);$('sig-sub',sub);$c('sig-sub',titleCol);
+    // Очищаем все уровни
+    ['sig-entry','sig-tp1','sig-tp2','sig-tp3','sig-sl','sig-rr'].forEach(id=>$(id,'—'));
+    ['sig-tp1-src','sig-tp2-src','sig-tp3-src','sig-sl-src'].forEach(id=>$(id,''));
+    const pb0=document.getElementById('sig-prog-bar');if(pb0)pb0.style.width='0%';
+    $('sig-prog-num','—');$('sig-prog-label','—');$('sig-aktual','—');
+    $('sig-stage','—');
+    const te0=document.getElementById('sig-tech-confirm');if(te0)te0.textContent='Ожидание данных...';
+    const ae0=document.getElementById('sig-advice');if(ae0){ae0.textContent='💡 Данные загружаются. Подождите несколько секунд.';ae0.style.color='var(--m2)';}
+    return;
+  }
   // СВЁРТКА В 5 ЧИСТЫХ ВЕРДИКТОВ ДЛЯ ПОЛЬЗОВАТЕЛЯ
   // Вся "кухня" анализа — внутри, наружу только вердикт
   // ═══════════════════════════════════════════════
