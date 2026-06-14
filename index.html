@@ -1869,8 +1869,77 @@ function hierarchyDecision(sym,ind){
   }
 
   // ═══════════════════════════════════════════
-  // ВСЕ 3 УРОВНЯ ПРОЙДЕНЫ — ВХОД!
-  // УРОВЕНЬ 4 — ПОДДЕРЖКА (просто считаем уверенность)
+  // ВСЕ 3 УРОВНЯ ПРОЙДЕНЫ — но проверяем КАЧЕСТВО входа
+  // Фильтр: прогресс отработки + R:R + истощение
+  // ═══════════════════════════════════════════
+  // Считаем прогресс и R:R для зоны входа
+  const atrV=ind.atr||price*0.002;
+  const entryPrice=+(isBuy?zone.price+atrV*0.1:zone.price-atrV*0.1).toFixed(2);
+  // Быстрый расчёт TP1 и SL для оценки R:R
+  let qTP1,qSL;
+  if(isBuy){
+    qTP1=lvls.res.length?lvls.res[0].price:entryPrice+atrV*1.5;
+    qSL=lvls.sup.length&&lvls.sup.find(l=>l.price<entryPrice)?lvls.sup.find(l=>l.price<entryPrice).price-atrV*0.3:entryPrice-atrV*1.5;
+  } else {
+    qTP1=lvls.sup.length?lvls.sup[0].price:entryPrice-atrV*1.5;
+    qSL=lvls.res.length&&lvls.res.find(l=>l.price>entryPrice)?lvls.res.find(l=>l.price>entryPrice).price+atrV*0.3:entryPrice+atrV*1.5;
+  }
+  const qRisk=Math.abs(entryPrice-qSL);
+  const qReward=Math.abs(qTP1-entryPrice);
+  const qRR=qRisk>0?qReward/qRisk:0;
+
+  // Прогресс отработки текущей цены относительно движения к TP1
+  const moveRange=Math.abs(qTP1-entryPrice)||1;
+  const moveDone=isBuy?(price-entryPrice):(entryPrice-price);
+  const progressPct=Math.max(0,Math.min(100,Math.round(moveDone/moveRange*100)));
+
+  // Актуальность тренда (истощение)
+  const stageCheck=getTrendStage(sym,ind);
+
+  // ── ФИЛЬТР КАЧЕСТВА ВХОДА ──
+  // Комбинированная оценка: прогресс + R:R + истощение
+  // Логика: чем больше пройдено, тем выше должен быть R:R и свежесть тренда
+
+  // 1. Поезд ушёл: прогресс > 66% (2/3 пути) — однозначно поздно
+  if(progressPct>66){
+    return{decision:'too_late',level:4,dir,zone,
+      reason:`Поезд ушёл — пройдено ${progressPct}% пути к TP1. Осталось мало места, риск разворота высок`,
+      l1ok:true,l2ok:true,l3ok:true,progressPct,qRR:qRR.toFixed(1),
+      strength:stageCheck,atZone:true};
+  }
+
+  // 2. Плохой R:R: меньше 1:1.5 — невыгодно
+  if(qRR<1.5){
+    return{decision:'bad_rr',level:4,dir,zone,
+      reason:`Плохое R:R 1:${qRR.toFixed(1)} (нужно ≥1:1.5) — прибыль не оправдывает риск`,
+      l1ok:true,l2ok:true,l3ok:true,progressPct,qRR:qRR.toFixed(1),
+      strength:stageCheck,atZone:true};
+  }
+
+  // 3. Зона осторожности: прогресс 33-66% — входим но малым объёмом
+  // (если при этом R:R хороший — разрешаем, иначе блок)
+  let cautionMode=false;
+  if(progressPct>33){
+    // В средней зоне требуем R:R минимум 1:2 для компенсации риска
+    if(qRR<2){
+      return{decision:'too_late',level:4,dir,zone,
+        reason:`Пройдено ${progressPct}% и R:R только 1:${qRR.toFixed(1)} — для входа в середине тренда нужно R:R ≥1:2`,
+        l1ok:true,l2ok:true,l3ok:true,progressPct,qRR:qRR.toFixed(1),
+        strength:stageCheck,atZone:true};
+    }
+    cautionMode=true; // входим но малым объёмом
+  }
+
+  // 4. Тренд сильно истощён (актуальность < 25%) — даже при хорошем входе осторожно
+  if(stageCheck.relevance<25){
+    return{decision:'too_late',level:4,dir,zone,
+      reason:`Тренд истощён (актуальность ${stageCheck.relevance}%) — высокий риск разворота, пропускаем`,
+      l1ok:true,l2ok:true,l3ok:true,progressPct,qRR:qRR.toFixed(1),
+      strength:stageCheck,atZone:true};
+  }
+
+  // ═══════════════════════════════════════════
+  // ВХОД РАЗРЕШЁН — считаем уверенность (Уровень 4)
   // ═══════════════════════════════════════════
   let confidence=0,confItems=[];
   if(revCandle.found){confidence+=2;confItems.push(`Свеча: ${revCandle.name}`);}
@@ -1883,7 +1952,8 @@ function hierarchyDecision(sym,ind){
   return{decision:'enter',level:4,dir,zone,
     reason:`ВХОД ${isBuy?'BUY':'SELL'} у ${zone.label}`,
     l1ok:true,l2ok:true,l3ok:true,
-    confidence,confItems,revCandle,strength,atZone:true};
+    confidence,confItems,revCandle,strength,atZone:true,
+    progressPct,qRR:qRR.toFixed(1),cautionMode};
 }
 
 function trNm(t){return t==='bull'?'бычий':t==='bear'?'медвежий':t==='neutral'?'нейтр.':'?';}
@@ -1944,13 +2014,31 @@ function updateSignalBlock(dir,score,ind){
     icon='⏰';title=`ГОТОВ — ЖДЁМ СВЕЧУ — ${sl}`;
     sub=`✅ Цена у зоны ${H.zone.label} · ${H.reason}`;
     bgC='rgba(41,121,255,0.07)';bdC='rgba(41,121,255,0.4)';titleCol='var(--accent)';entryStatus='wait_confirm';
+  } else if(H.decision==='too_late'){
+    icon='🚂';title='ПОЗДНО — ПОЕЗД УШЁЛ';
+    sub=`⚠️ ${H.reason}`;
+    bgC='rgba(255,171,0,0.07)';bdC='rgba(255,171,0,0.4)';titleCol='var(--warn)';entryStatus='too_late';
+  } else if(H.decision==='bad_rr'){
+    icon='⚠️';title='ПЛОХОЙ R:R — ПРОПУСТИТЬ';
+    sub=`${H.reason}`;
+    bgC='rgba(255,171,0,0.06)';bdC='rgba(255,171,0,0.35)';titleCol='var(--warn)';entryStatus='bad_rr';
   } else if(H.decision==='enter'){
-    // ВХОД! Все 3 уровня пройдены
+    // ВХОД! Все 3 уровня пройдены + качество проверено
     const cf=H.confidence;
-    if(cf>=6){icon=isBuy?'🚀':'💥';title=`ВХОДИТЬ! ${sl} ${SYM_NAME[sym]}`;}
-    else{icon=isBuy?'📈':'📉';title=`ВХОДИТЬ — ${sl} ${SYM_NAME[sym]}`;}
-    sub=`🏆 Все 3 уровня ✅ · Уверенность ${cf}/8 · ${H.confItems.slice(0,2).join(' · ')}`;
-    bgC=isBuy?'rgba(0,230,118,0.1)':'rgba(255,23,68,0.1)';bdC=col;titleCol=col;entryStatus='enter';
+    if(H.cautionMode){
+      // Вход в середине тренда (33-66%) — малый объём
+      icon=isBuy?'📈':'📉';title=`ВХОДИТЬ ОСТОРОЖНО — ${sl} ${SYM_NAME[sym]}`;
+      sub=`✅ Все 3 уровня · Пройдено ${H.progressPct}% · R:R 1:${H.qRR} · Объём 30-50%`;
+      bgC=isBuy?'rgba(0,230,118,0.06)':'rgba(255,23,68,0.06)';bdC='rgba(255,171,0,0.4)';titleCol=col;entryStatus='enter_caution';
+    } else if(cf>=6){
+      icon=isBuy?'🚀':'💥';title=`ВХОДИТЬ! ${sl} ${SYM_NAME[sym]}`;
+      sub=`🏆 Все 3 уровня ✅ · Уверенность ${cf}/8 · Свежий вход (${H.progressPct}%) · R:R 1:${H.qRR}`;
+      bgC=isBuy?'rgba(0,230,118,0.1)':'rgba(255,23,68,0.1)';bdC=col;titleCol=col;entryStatus='enter';
+    } else {
+      icon=isBuy?'📈':'📉';title=`ВХОДИТЬ — ${sl} ${SYM_NAME[sym]}`;
+      sub=`✅ Все 3 уровня · Уверенность ${cf}/8 · Пройдено ${H.progressPct}% · R:R 1:${H.qRR}`;
+      bgC=isBuy?'rgba(0,230,118,0.08)':'rgba(255,23,68,0.08)';bdC=col;titleCol=col;entryStatus='enter';
+    }
   } else {
     icon='🚫';title='НЕ ВХОДИТЬ';sub=H.reason||'Условия не выполнены';
     bgC='rgba(255,23,68,0.04)';bdC='rgba(255,23,68,0.2)';titleCol='var(--sell)';entryStatus='no';
@@ -1962,7 +2050,7 @@ function updateSignalBlock(dir,score,ind){
 
   // ТВХ — берём из зоны иерархии или из smart
   let entryVal='—',tp1='—',tp2='—',tp3='—',slVal='—',rr='—',tp1s='',tp2s='',tp3s='',sls='';
-  if(H.zone&&(H.decision==='wait_pullback'||H.decision==='wait_confirm'||H.decision==='enter')){
+  if(H.zone&&(H.decision==='wait_pullback'||H.decision==='wait_confirm'||H.decision==='enter'||H.decision==='too_late'||H.decision==='bad_rr')){
     // ТВХ на зоне отката
     const atr=ind.atr||price*0.002;
     const entry=+(isBuy?H.zone.price+atr*0.1:H.zone.price-atr*0.1).toFixed(2);
@@ -1996,7 +2084,10 @@ function updateSignalBlock(dir,score,ind){
   else if(H.decision==='no_zone')advice=`⏳ Тренд есть, но цена далеко от уровня. Дождитесь отката цены к зоне входа — не входите по текущей цене`;
   else if(H.decision==='wait_pullback')advice=`⏳ ${H.reason}. Когда цена дойдёт до уровня — ждите разворотную свечу, затем входите`;
   else if(H.decision==='wait_confirm')advice=`⏰ Цена у уровня ${H.zone.label}! Ждём подтверждение: бычью свечу (для BUY) или разворот StochRSI. Как появится — входим СРАЗУ`;
-  else if(H.decision==='enter')advice=`✅ ВХОД ПОДТВЕРЖДЁН! ${H.confItems.join(' · ')}. SL за уровень. После TP1 — перенесите SL в безубыток`;
+  else if(H.decision==='too_late')advice=`🚂 ${H.reason}. Лучше пропустить эту сделку и дождаться следующего свежего сигнала — вход в хвосте тренда часто заканчивается разворотом против вас`;
+  else if(H.decision==='bad_rr')advice=`⚠️ ${H.reason}. Прибыль слишком мала относительно риска. Дождитесь сигнала с R:R хотя бы 1:2 — одна такая сделка покроет две неудачные`;
+  else if(H.decision==='enter'&&H.cautionMode)advice=`📈 Вход разрешён, но тренд пройден на ${H.progressPct}%. Входите уменьшенным объёмом (30-50%). R:R 1:${H.qRR} это компенсирует. SL за уровень обязательно`;
+  else if(H.decision==='enter')advice=`✅ ВХОД ПОДТВЕРЖДЁН! Свежий вход (пройдено ${H.progressPct}%), R:R 1:${H.qRR}. ${H.confItems.join(' · ')}. SL за уровень. После TP1 — перенесите SL в безубыток`;
   else advice='Ожидание условий для входа';
   const ae=document.getElementById('sig-advice');
   if(ae){ae.textContent='💡 '+advice;ae.style.color=H.decision==='enter'?'var(--buy)':H.decision==='wait_confirm'?'var(--accent)':'var(--warn)';ae.style.background=H.decision==='enter'?'rgba(0,230,118,0.06)':'rgba(41,121,255,0.06)';ae.style.borderColor=H.decision==='enter'?'rgba(0,230,118,0.2)':'rgba(41,121,255,0.2)';}
