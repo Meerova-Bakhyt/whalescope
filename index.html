@@ -44,6 +44,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 .pc{background:var(--p1);border:1px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
 .pc:hover{border-color:var(--b2);transform:translateY(-1px)}
 .pc.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.pc.signal-enter{border-color:var(--buy)!important;box-shadow:0 0 0 1px var(--buy),0 0 14px rgba(0,230,118,0.45);animation:sigpulse 1.6s infinite}
+@keyframes sigpulse{0%,100%{box-shadow:0 0 0 1px var(--buy),0 0 8px rgba(0,230,118,0.35)}50%{box-shadow:0 0 0 1px var(--buy),0 0 18px rgba(0,230,118,0.6)}}
+.pc-sig{position:absolute;top:7px;right:9px;font-size:14px;line-height:1}
 .pc-top{display:flex;align-items:center;gap:7px;margin-bottom:2px}
 .pc-ico{font-size:15px}
 .pc-name{font-weight:700;font-size:13px}
@@ -146,6 +149,7 @@ canvas{display:block;width:100%}
       </div>
     </div>
     <div class="hdr-right">
+      <div class="badge badge-key" id="notify-badge" onclick="toggleNotify()" style="cursor:pointer" title="Звук и уведомление при сигнале ВХОДИТЬ">🔔 Сигнал вкл</div>
       <div class="badge badge-key">🔑 <span id="hdr-user">—</span></div>
       <div class="badge badge-live"><span class="dot"></span> LIVE <span id="clock" class="num" style="margin-left:4px">—</span></div>
     </div>
@@ -324,7 +328,16 @@ function calcStochRSI(arr){
   const zone=K<20?'oversold':K>80?'overbought':'mid';
   return{K,D,cross,zone};
 }
-function calcMACD(arr){if(!arr||arr.length<26)return null;const e12=ema(arr.slice(-26),12),e26=ema(arr.slice(-26),26);const macd=e12-e26;const sig=macd*0.8;return{macd,signal:sig,hist:macd-sig};}
+function calcMACD(arr){
+  if(!arr||arr.length<35)return null;
+  const k12=2/13,k26=2/27,k9=2/10;
+  let e12=arr[0],e26=arr[0];const macdArr=[];
+  for(let i=0;i<arr.length;i++){e12=arr[i]*k12+e12*(1-k12);e26=arr[i]*k26+e26*(1-k26);macdArr.push(e12-e26);}
+  const macd=macdArr[macdArr.length-1];
+  // Сигнальная линия = настоящая EMA9 от линии MACD
+  let sig=macdArr[0];for(let i=1;i<macdArr.length;i++)sig=macdArr[i]*k9+sig*(1-k9);
+  return{macd,signal:sig,hist:macd-sig};
+}
 function calcBB(arr,n){n=n||20;if(!arr||arr.length<n)return null;const s=arr.slice(-n);const m=s.reduce((a,b)=>a+b,0)/n;const v=s.reduce((a,b)=>a+(b-m)**2,0)/n;const sd=Math.sqrt(v);return{mid:m,upper:m+2*sd,lower:m-2*sd};}
 function calcATR(candles,n){n=n||14;if(!candles||candles.length<2)return 0;const tr=[];for(let i=1;i<candles.length;i++){const c=candles[i],p=candles[i-1];tr.push(Math.max(c.h-c.l,Math.abs(c.h-p.c),Math.abs(c.l-p.c)));}return sma(tr,n)||0;}
 function calcVWAP(candles){if(!candles||candles.length<1)return null;let pv=0,vol=0;candles.slice(-30).forEach(c=>{const tp=(c.h+c.l+c.c)/3;pv+=tp*(c.v||1);vol+=(c.v||1);});const vwap=vol?pv/vol:candles[candles.length-1].c;const sd=vwap*0.005;return{vwap,u1:vwap+sd,u2:vwap+2*sd,l1:vwap-sd,l2:vwap-2*sd};}
@@ -554,44 +567,66 @@ function getTrendStage(sym,ind){
 // ДЕТЕКТОР КОРРЕКЦИИ + ВОЗОБНОВЛЕНИЯ (ГЛАВНОЕ!)
 // Вход ТОЛЬКО после отката, на продолжении тренда
 // ════════════════════════════════════════════════════════
-function detectPullbackEntry(cc,isBuy){
-  if(!cc||cc.length<8)return{ok:false,phase:'мало данных',wait:true};
-  const last=cc.slice(-8);
-  const c=last[last.length-1],prev=last[last.length-2];
-  let hi=last[0].h,lo=last[0].l,hiIdx=0,loIdx=0;
-  last.forEach((x,i)=>{if(x.h>hi){hi=x.h;hiIdx=i;}if(x.l<lo){lo=x.l;loIdx=i;}});
-  const range=(hi-lo)||1;
+function detectPullbackEntry(cc,isBuy,price){
+  if(!cc||cc.length<10)return{ok:false,phase:'мало данных',wait:true};
+  const win=cc.slice(-14);
+  const c=win[win.length-1],prev=win[win.length-2];
+  const px=(price!=null&&!isNaN(price))?price:c.c;
+  // Свинг-структура внутри окна
+  let peak=-Infinity,peakIdx=0,trough=Infinity,troughIdx=0;
+  win.forEach((x,i)=>{if(x.h>peak){peak=x.h;peakIdx=i;}if(x.l<trough){trough=x.l;troughIdx=i;}});
 
   if(isBuy){
-    // Рост: пик → откат вниз → возобновление вверх
-    const afterPeak=last.slice(hiIdx+1);
-    if(afterPeak.length<2)return{ok:false,phase:'цена на пике — ждём откат',atPeak:true};
-    const lowAfter=Math.min(...afterPeak.map(x=>x.l));
-    const depth=(hi-lowAfter)/range;
-    if(depth<0.18)return{ok:false,phase:'цена у пика, отката нет — ждём',atPeak:true};
-    const resuming=c.c>c.o&&c.c>prev.c; // зелёная свеча, выше предыдущей
-    if(!resuming)return{ok:false,phase:'идёт коррекция вниз — ждём разворота',inCorrection:true};
-    if(depth>0.78)return{ok:false,phase:'откат слишком глубокий — тренд под вопросом',deep:true};
-    return{ok:true,phase:'коррекция закончилась, рост продолжается ↑',depth:Math.round(depth*100)};
+    // Импульс вверх = от свинг-минимума (ДО пика) до пика
+    const before=win.slice(0,peakIdx+1);
+    const swingLow=Math.min(...before.map(x=>x.l));
+    const impulse=peak-swingLow;
+    if(impulse<=0)return{ok:false,phase:'восходящего импульса нет — ждём',wait:true};
+    const after=win.slice(peakIdx+1);
+    if(after.length<1)return{ok:false,phase:'цена на пике, отката ещё нет — ждём',atPeak:true};
+    const pbLow=Math.min(...after.map(x=>x.l));
+    const retrace=(peak-pbLow)/impulse;                 // фибо-откат от импульса (знаменатель не схлопывается)
+    if(retrace<0.15)return{ok:false,phase:'откат мелкий (<15%) — цена у пика, ждём',atPeak:true,retrace:Math.round(retrace*100)};
+    if(retrace>0.85)return{ok:false,phase:`откат глубокий (${Math.round(retrace*100)}%>85%) — импульс под вопросом`,deep:true,retrace:Math.round(retrace*100)};
+    // Прогресс ВНУТРИ нового импульса: 0% у дна отката, 100% у пика
+    const span=(peak-pbLow)||1;
+    const localProg=Math.max(0,Math.min(100,Math.round((px-pbLow)/span*100)));
+    // Ещё падаем? (новый минимум на последней свече / цена у дна) → коррекция продолжается
+    const stillFalling=c.l<=pbLow*1.0003||px<=pbLow*1.0008;
+    if(stillFalling)return{ok:false,phase:'коррекция вниз продолжается — ждём зелёную свечу',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbLow,peak,swingLow,impulse};
+    // Возобновление: цена поднялась от дна на ≥5% импульса И свеча зелёная
+    const lifted=px>pbLow+impulse*0.05;
+    const green=c.c>=c.o&&c.c>=prev.c*0.999;
+    if(!(lifted&&green))return{ok:false,phase:'разворот вверх ещё не подтверждён — ждём зелёную свечу',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbLow,peak,swingLow,impulse};
+    return{ok:true,phase:`откат ${Math.round(retrace*100)}% завершён — новый импульс вверх ↑`,retrace:Math.round(retrace*100),localProg,pbLow,peak,swingLow,impulse};
   } else {
-    // Падение: дно → отскок вверх → возобновление вниз
-    const afterTrough=last.slice(loIdx+1);
-    if(afterTrough.length<2)return{ok:false,phase:'цена на дне — ждём отскок',atPeak:true};
-    const highAfter=Math.max(...afterTrough.map(x=>x.h));
-    const depth=(highAfter-lo)/range;
-    if(depth<0.18)return{ok:false,phase:'цена у дна, отскока нет — ждём',atPeak:true};
-    const resuming=c.c<c.o&&c.c<prev.c; // красная свеча, ниже предыдущей
-    if(!resuming)return{ok:false,phase:'идёт отскок вверх — ждём разворота',inCorrection:true};
-    if(depth>0.78)return{ok:false,phase:'отскок слишком глубокий — тренд под вопросом',deep:true};
-    return{ok:true,phase:'отскок закончился, падение продолжается ↓',depth:Math.round(depth*100)};
+    // Импульс вниз = от свинг-максимума (ДО дна) до дна
+    const before=win.slice(0,troughIdx+1);
+    const swingHigh=Math.max(...before.map(x=>x.h));
+    const impulse=swingHigh-trough;
+    if(impulse<=0)return{ok:false,phase:'нисходящего импульса нет — ждём',wait:true};
+    const after=win.slice(troughIdx+1);
+    if(after.length<1)return{ok:false,phase:'цена на дне, отскока ещё нет — ждём',atPeak:true};
+    const pbHigh=Math.max(...after.map(x=>x.h));
+    const retrace=(pbHigh-trough)/impulse;
+    if(retrace<0.15)return{ok:false,phase:'отскок мелкий (<15%) — цена у дна, ждём',atPeak:true,retrace:Math.round(retrace*100)};
+    if(retrace>0.85)return{ok:false,phase:`отскок глубокий (${Math.round(retrace*100)}%>85%) — импульс под вопросом`,deep:true,retrace:Math.round(retrace*100)};
+    const span=(pbHigh-trough)||1;
+    const localProg=Math.max(0,Math.min(100,Math.round((pbHigh-px)/span*100)));
+    const stillRising=c.h>=pbHigh*0.9997||px>=pbHigh*0.9992;
+    if(stillRising)return{ok:false,phase:'отскок вверх продолжается — ждём красную свечу',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbHigh,trough,swingHigh,impulse};
+    const lifted=px<pbHigh-impulse*0.05;
+    const red=c.c<=c.o&&c.c<=prev.c*1.001;
+    if(!(lifted&&red))return{ok:false,phase:'разворот вниз ещё не подтверждён — ждём красную свечу',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbHigh,trough,swingHigh,impulse};
+    return{ok:true,phase:`отскок ${Math.round(retrace*100)}% завершён — новый импульс вниз ↓`,retrace:Math.round(retrace*100),localProg,pbHigh,trough,swingHigh,impulse};
   }
 }
 
 // ════════════════════════════════════════════════════════
 // BTC КОНТЕКСТ — СИММЕТРИЧНЫЙ (BUY и SELL)
 // ════════════════════════════════════════════════════════
-function getBTCContext(){
-  if(curSym==='BTCUSDT')return{bearish:false,bullish:false,msgBuy:'',msgSell:''};
+function getBTCContext(sym){
+  if(sym==='BTCUSDT')return{bearish:false,bullish:false,msgBuy:'',msgSell:''};
   const btc=ST['BTCUSDT'];
   if(!btc||!btc.candles[60]||btc.candles[60].length<3)return{bearish:false,bullish:false,msgBuy:'',msgSell:''};
   const h1=detectTrend('BTCUSDT',60),h4=detectTrend('BTCUSDT',240),m30=detectTrend('BTCUSDT',30);
@@ -636,7 +671,7 @@ function hierarchyDecision(sym,ind){
   if(h4Against&&m30Against)return{decision:'wait',dir,reason:`Старший тренд против (H4 ${trNm(h4)}, M30 ${trNm(m30)}) — ждём`,l1:false};
 
   // BTC симметричный фильтр
-  const btc=getBTCContext();
+  const btc=getBTCContext(sym);
   if(isBuy&&btc.bearish)return{decision:'wait',dir,reason:btc.msgBuy,l1:false,btcBlock:true};
   if(!isBuy&&btc.bullish)return{decision:'wait',dir,reason:btc.msgSell,l1:false,btcBlock:true};
 
@@ -644,25 +679,41 @@ function hierarchyDecision(sym,ind){
   const strength=getTrendStrength(sym);
   if(strength.pct<25)return{decision:'wait',dir,reason:`Тренд слабый (${strength.pct}%) — пока боковик, ждём импульс`,l1:false,strength};
 
-  // ── ФИЛЬТР ИСТОЩЕНИЯ И ПРОГРЕССА ──
+  // ── ФИЛЬТР ИСТОЩЕНИЯ (актуальность тренда) ──
+  // Жёсткий стоп только при полном выдохе движения. «Поздно/рано» дальше
+  // считаем ВНУТРИ нового импульса (детектор отката), а не по глобальному окну H1 —
+  // иначе возобновление после коррекции ложно читалось как «поздно».
   const stage=getTrendStage(sym,ind);
-  // Прогресс от свежего экстремума (10 свечей H1)
-  const c60=ST[sym].candles[60]||[];
-  let progress=0;
-  if(c60.length>=8){
-    const win=c60.slice(-10);
-    const sl=Math.min(...win.map(x=>x.l)),sh=Math.max(...win.map(x=>x.h));
-    const rng=(sh-sl)||1;
-    progress=isBuy?Math.round((price-sl)/rng*100):Math.round((sh-price)/rng*100);
+  const atr=ind.atr||price*0.002;
+  if(stage.relevance<8)
+    return{decision:'too_late',dir,reason:`Тренд истощён (актуальность ${stage.relevance}%) — движение выдохлось, ждём новый импульс`,l1:true,stage,progress:stage.progress,strength};
+
+  // ── УРОВЕНЬ 3: КОГДА — коррекция и её завершение (ГЛАВНОЕ) ──
+  const pull=detectPullbackEntry(c15,isBuy,price);
+  // Прогресс ВНУТРИ нового импульса: 0% у дна отката, 100% у пика
+  const progress=pull.localProg!=null?pull.localProg:0;
+  // Ожидаемая зона входа из структуры отката (видна заранее в ПОЧТИ ГОТОВ/ПОЗДНОВАТО)
+  const pbZone=isBuy?(pull.pbLow!=null?{price:pull.pbLow,label:'Дно отката',pri:1}:null)
+                    :(pull.pbHigh!=null?{price:pull.pbHigh,label:'Вершина отскока',pri:1}:null);
+
+  if(!pull.ok){
+    if(pull.inCorrection)
+      return{decision:'wait_confirm',dir,zone:pbZone,reason:`${pull.phase} — вход близко!`,l1:true,l2:true,stage,progress,strength,pull};
+    if(pull.atPeak)
+      return{decision:'getting_late',dir,zone:pbZone,reason:`${pull.phase}. Не входим на вершине`,l1:true,l2:true,stage,progress,strength,pull};
+    if(pull.deep)
+      return{decision:'wait',dir,reason:pull.phase,l1:true,l2:true,stage,progress,strength,pull};
+    return{decision:'wait',dir,reason:pull.phase,l1:true,stage,progress,strength,pull};
   }
 
-  if(stage.relevance<8||progress>=88)
-    return{decision:'too_late',dir,reason:progress>=88?`Цена у вершины движения (пройдено ${progress}%) — поздно, ждём откат`:`Тренд истощён (актуальность ${stage.relevance}%) — движение выдохлось`,l1:true,stage,progress,strength};
-  if(stage.relevance<25||progress>=72)
-    return{decision:'getting_late',dir,reason:progress>=72?`Цена высоко (пройдено ${progress}%) — поздновато`:`Тренд стареет (актуальность ${stage.relevance}%) — поздновато`,l1:true,stage,progress,strength};
+  // Возобновление есть — но не слишком ли поздно? (цена уже почти у пика?)
+  if(progress>=88)
+    return{decision:'too_late',dir,reason:`Цена восстановилась на ${progress}% импульса — поздно, ждём новый откат`,l1:true,l2:true,stage,progress,strength,pull};
+  if(progress>=72)
+    return{decision:'getting_late',dir,zone:pbZone,reason:`Пройдено ${progress}% нового импульса — поздновато`,l1:true,l2:true,stage,progress,strength,pull};
 
-  // ── УРОВЕНЬ 2: ГДЕ (зона отката) ──
-  const lvls=ind.lvls;const atr=ind.atr||price*0.002;
+  // ── УРОВЕНЬ 2: ГДЕ — зона отката + уровни для SL/TP ──
+  const lvls=ind.lvls;
   const ob=detectOB(sym,dir),fvg=detectFVG(sym,dir),fib=ind.fib;
   const zones=[];
   if(ob.found)zones.push({price:ob.price,label:'Order Block',pri:10});
@@ -672,41 +723,34 @@ function hierarchyDecision(sym,ind){
   if(lvls.ma90)zones.push({price:lvls.ma90,label:'MA90',pri:6});
   if(isBuy&&lvls.sup.length)lvls.sup.forEach(l=>zones.push({price:l.price,label:`Поддержка $${l.price.toFixed(dpFor(sym))}`,pri:5}));
   if(!isBuy&&lvls.res.length)lvls.res.forEach(l=>zones.push({price:l.price,label:`Сопротивление $${l.price.toFixed(dpFor(sym))}`,pri:5}));
-  // Зоны для входа: BUY ниже/у цены, SELL выше/у цены
   const valid=zones.filter(z=>isBuy?(z.price<=price*1.003&&(price-z.price)/price<=0.05):(z.price>=price*0.997&&(z.price-price)/price<=0.05))
     .sort((a,b)=>b.pri-a.pri||Math.abs(a.price-price)-Math.abs(b.price-price));
-  const zone=valid.length?valid[0]:{price:isBuy?price-atr:price+atr,label:isBuy?'ATR зона':'ATR зона',pri:1};
+  const dnOtkata=isBuy?(pull.pbLow!=null?pull.pbLow:price-atr):(pull.pbHigh!=null?pull.pbHigh:price+atr);
+  const zone=valid.length?valid[0]:{price:dnOtkata,label:'Дно отката',pri:1};
 
-  // ── УРОВЕНЬ 3: КОГДА (коррекция закончилась?) ──
-  const pull=detectPullbackEntry(c15,isBuy);
-  if(!pull.ok){
-    if(pull.atPeak)return{decision:'getting_late',dir,zone,reason:`Цена ${isBuy?'на пике':'на дне'} — ${pull.phase}. Не входим на вершине`,l1:true,l2:true,stage,progress,strength};
-    if(pull.deep)return{decision:'wait',dir,zone,reason:pull.phase,l1:true,l2:true,stage,progress,strength};
-    if(pull.inCorrection)return{decision:'wait_confirm',dir,zone,reason:`${pull.phase}. Ждём ${isBuy?'зелёную':'красную'} свечу — вход близко!`,l1:true,l2:true,stage,progress,strength};
-    return{decision:'wait_confirm',dir,zone,reason:pull.phase,l1:true,l2:true,stage,progress,strength};
-  }
-
-  // ── КОРРЕКЦИЯ ЗАКОНЧИЛАСЬ — СЧИТАЕМ R:R И ВХОД ──
-  const entry=isBuy?zone.price+atr*0.1:zone.price-atr*0.1;
+  // ── ВХОД (на возобновлении, у текущей цены), SL за дно/вершину отката, TP ──
+  const entry=price;
   let tp1,sl;
   if(isBuy){
-    tp1=lvls.res.length?lvls.res[0].price:entry+atr*2;
-    const supBelow=lvls.sup.find(l=>l.price<entry);
-    sl=supBelow?supBelow.price-atr*0.3:entry-atr*1.5;
+    const stopBase=pull.pbLow!=null?pull.pbLow:zone.price;
+    sl=stopBase-atr*0.3;                                 // SL за дно отката = инвалидация
+    const resAbove=lvls.res.find(l=>l.price>entry*1.001);
+    tp1=resAbove?resAbove.price:(pull.peak&&pull.peak>entry?pull.peak:entry+(pull.impulse||atr*2)*0.7);
   }else{
-    tp1=lvls.sup.length?lvls.sup[0].price:entry-atr*2;
-    const resAbove=lvls.res.find(l=>l.price>entry);
-    sl=resAbove?resAbove.price+atr*0.3:entry+atr*1.5;
+    const stopBase=pull.pbHigh!=null?pull.pbHigh:zone.price;
+    sl=stopBase+atr*0.3;                                 // SL за вершину отскока
+    const supBelow=lvls.sup.find(l=>l.price<entry*0.999);
+    tp1=supBelow?supBelow.price:(pull.trough&&pull.trough<entry?pull.trough:entry-(pull.impulse||atr*2)*0.7);
   }
   const risk=Math.abs(entry-sl),reward=Math.abs(tp1-entry);
   const rr=risk>0?reward/risk:0;
 
-  if(rr<1.5)return{decision:'bad_rr',dir,zone,reason:`Плохое R:R 1:${rr.toFixed(1)} (нужно ≥1:1.5) — прибыль не оправдывает риск`,l1:true,l2:true,l3:true,stage,progress,strength,rr:rr.toFixed(1)};
+  if(rr<1.5)return{decision:'bad_rr',dir,zone,reason:`Плохое R:R 1:${rr.toFixed(1)} (нужно ≥1:1.5) — прибыль не оправдывает риск`,l1:true,l2:true,l3:true,stage,progress,strength,rr:rr.toFixed(1),pull};
 
   // Зона осторожности 50-72% — нужен R:R≥2
   let caution=false;
   if(progress>50){
-    if(rr<2)return{decision:'too_late',dir,zone,reason:`Пройдено ${progress}% и R:R 1:${rr.toFixed(1)} — для середины нужно R:R≥1:2`,l1:true,l2:true,l3:true,stage,progress,strength,rr:rr.toFixed(1)};
+    if(rr<2)return{decision:'too_late',dir,zone,reason:`Пройдено ${progress}% импульса и R:R 1:${rr.toFixed(1)} — для середины нужно R:R≥1:2`,l1:true,l2:true,l3:true,stage,progress,strength,rr:rr.toFixed(1),pull};
     caution=true;
   }
 
@@ -763,12 +807,21 @@ function updateSignalBlock(){
   if(showLevels&&H.entry!=null){
     $('sig-entry',fmtP(sym,H.entry));$c('sig-entry',entryStatus==='enter'?dirCol:'var(--warn)');
     $('sig-tp1',fmtP(sym,H.tp1));$('sig-sl',fmtP(sym,H.sl));$('sig-rr','1:'+H.rr);
-    // TP2/TP3 проекция
+    // TP2/TP3 — НАСТОЯЩИЕ фибо-расширения от импульса (проекция от дна/вершины отката)
     const atr=ind.atr||price*0.002;
-    const tp2=isBuy?H.tp1+atr*1.5:H.tp1-atr*1.5;
-    const tp3=isBuy?H.tp1+atr*3:H.tp1-atr*3;
+    let tp2,tp3,tp2src,tp3src;
+    if(H.pull&&H.pull.impulse>0){
+      const imp=H.pull.impulse;
+      if(isBuy){const base=H.pull.pbLow;tp2=base+imp*1.618;tp3=base+imp*2.0;}
+      else{const base=H.pull.pbHigh;tp2=base-imp*1.618;tp3=base-imp*2.0;}
+      tp2src='Fib 161.8% 🥇';tp3src='Fib 200%';
+    }else{
+      tp2=isBuy?H.tp1+atr*1.5:H.tp1-atr*1.5;
+      tp3=isBuy?H.tp1+atr*3:H.tp1-atr*3;
+      tp2src='ATR-проекция';tp3src='ATR-проекция';
+    }
     $('sig-tp2',fmtP(sym,tp2));$('sig-tp3',fmtP(sym,tp3));
-    $('sig-tp1-src','Сопротивление/MA');$('sig-tp2-src','Fib 161.8% 🥇');$('sig-tp3-src','Расширение 200%');
+    $('sig-tp1-src','Сопротивление/уровень');$('sig-tp2-src',tp2src);$('sig-tp3-src',tp3src);
     $('sig-sl-src',H.zone?'За '+H.zone.label:'ATR стоп');
   }else if(showLevels&&H.zone){
     // wait_confirm/getting_late: показываем зону но без точных TP
@@ -814,6 +867,10 @@ function updateSignalBlock(){
   // Технический блок
   const l1=H.l1?'✅':'⏳',l2=H.l2?'✅':(H.l1?'⏳':'—'),l3=H.decision==='enter'?'✅':(H.l2?'⏳':'—');
   $('sig-tech',`Уровень 1 (тренд+BTC): ${l1} · Уровень 2 (зона): ${l2} · Уровень 3 (коррекция→вход): ${l3} · Сила: ${H.strength?H.strength.label:'—'}`);
+
+  // Уведомление при ПЕРЕХОДЕ в статус «ВХОДИТЬ» (не каждые 10с, а только в момент появления)
+  if(H.decision==='enter'&&lastSig[sym]!=='enter')notifyEnter(sym,isBuy);
+  lastSig[sym]=H.decision;
 }
 
 // ════════════════════════════════════════════════════════
@@ -822,7 +879,7 @@ function updateSignalBlock(){
 function updateMasterFilter(){
   const sym=curSym,ind=getInd(sym),H=hierarchyDecision(sym,ind);
   const isBuy=H.dir==='Buy';
-  const btc=getBTCContext();
+  const btc=getBTCContext(sym);
   const rows=[
     {ok:H.l1,t:`H1 направление: ${trNm(ind.trendH1)} → ${H.dir||'—'}`},
     {ok:!((isBuy&&ind.trendH4==='bear'&&ind.trendM30==='bear')||(!isBuy&&ind.trendH4==='bull'&&ind.trendM30==='bull')),t:`H4 разрешение: ${trNm(ind.trendH4)}`},
@@ -984,6 +1041,7 @@ function renderGrid(){
   document.getElementById('pair-grid').innerHTML=ALL_SYMS.map(sym=>{
     const col=SYM_COLOR[sym];
     return `<div class="pc ${sym===curSym?'active':''}" id="pc-${sym}" onclick="setSym('${sym}')">
+      <div class="pc-sig" id="pcs-${sym}"></div>
       <div class="pc-top"><span class="pc-ico">${SYM_ICO[sym]}</span><span class="pc-name" style="color:${col}">${SYM_NAME[sym]}</span></div>
       <div class="pc-grp">${sym==='XAUUSDT'||sym==='XAUTUSDT'?'Золото':'Крипто'}</div>
       <div class="pc-price num" id="pcp-${sym}">—</div>
@@ -1110,7 +1168,98 @@ function toggleKitchen(){
   else{c.style.display='none';a.style.transform='rotate(0deg)';}
 }
 
+// ════════════════════════════════════════════════════════
+// УВЕДОМЛЕНИЯ О СИГНАЛЕ «ВХОДИТЬ»
+// ════════════════════════════════════════════════════════
+let NOTIFY=true,lastSig={},audioCtx=null,titleFlash=null;
+const ORIG_TITLE='WhaleScope v9';
+try{if(localStorage.getItem('ws_notify')==='0')NOTIFY=false;}catch(e){}
+function initAudio(){try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}}
+function beepTone(freq,delay){
+  if(!audioCtx)return;
+  try{
+    const t=audioCtx.currentTime+delay;
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.connect(g);g.connect(audioCtx.destination);o.type='sine';o.frequency.value=freq;
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(0.35,t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+0.45);
+    o.start(t);o.stop(t+0.5);
+  }catch(e){}
+}
+function beep(buy){initAudio();if(buy){beepTone(880,0);beepTone(1175,0.18);}else{beepTone(523,0);beepTone(392,0.18);}}
+function flashTitle(txt){
+  clearInterval(titleFlash);let on=false;
+  titleFlash=setInterval(()=>{document.title=on?ORIG_TITLE:'🚀 '+txt;on=!on;},800);
+  const stop=()=>{clearInterval(titleFlash);document.title=ORIG_TITLE;window.removeEventListener('focus',stop);};
+  window.addEventListener('focus',stop);
+}
+function notifyEnter(sym,buy){
+  if(!NOTIFY)return;
+  const name=SYM_NAME[sym]||sym;
+  const txt=`${name}: ВХОДИТЬ — ${buy?'BUY ↑ (рост)':'SELL ↓ (падение)'}`;
+  beep(buy);
+  flashTitle(`${name} ВХОД ${buy?'BUY':'SELL'}`);
+  try{if('Notification'in window&&Notification.permission==='granted')new Notification('🐋 WhaleScope — сигнал входа',{body:txt});}catch(e){}
+}
+function toggleNotify(){
+  NOTIFY=!NOTIFY;
+  try{localStorage.setItem('ws_notify',NOTIFY?'1':'0');}catch(e){}
+  if(NOTIFY){initAudio();beep(true);if('Notification'in window&&Notification.permission==='default'){try{Notification.requestPermission();}catch(e){}}}
+  const el=document.getElementById('notify-badge');
+  if(el){el.textContent=NOTIFY?'🔔 Сигнал вкл':'🔕 Сигнал выкл';el.style.opacity=NOTIFY?'1':'0.5';}
+}
+
 function tick(){$('clock',new Date().toLocaleTimeString('ru-RU'));}
+
+// ════════════════════════════════════════════════════════
+// ФОНОВЫЙ СКАНЕР ВСЕХ 27 ПАР
+// Зовёт, как только «ВХОДИТЬ» появляется на ЛЮБОЙ паре
+// ════════════════════════════════════════════════════════
+let scanIdx=0,scanReady=false,scanBusy=false;
+function markPairSignal(sym,dec){
+  const card=document.getElementById('pc-'+sym);if(!card)return;
+  card.classList.toggle('signal-enter',dec==='enter');
+  const sig=document.getElementById('pcs-'+sym);
+  if(sig)sig.textContent=dec==='enter'?'🚀':(dec==='wait_confirm'?'⏰':'');
+}
+function notifyEnterMulti(list){
+  if(!NOTIFY)return;
+  const buyCount=list.filter(x=>x.buy).length;
+  beep(buyCount>=list.length-buyCount);
+  const names=list.map(x=>`${SYM_NAME[x.sym]||x.sym} ${x.buy?'BUY↑':'SELL↓'}`).join(', ');
+  flashTitle(`ВХОД: ${names}`);
+  try{if('Notification'in window&&Notification.permission==='granted')new Notification('🐋 WhaleScope — сигнал входа',{body:`ВХОДИТЬ: ${names}`});}catch(e){}
+}
+// Тихий первичный проход — фиксируем текущие статусы без звонка (чтобы не было всплеска при старте)
+function primeSignals(){
+  for(const sym of ALL_SYMS){
+    try{const H=hierarchyDecision(sym,getInd(sym));lastSig[sym]=H.decision;markPairSignal(sym,H.decision);}catch(e){}
+  }
+  scanReady=true;
+}
+async function scanAllPairs(){
+  if(!scanReady||scanBusy)return;
+  scanBusy=true;
+  try{
+    // Обновляем свечи по кругу батчами, чтобы данные всех пар не застывали
+    const batch=5,refresh=[];
+    for(let i=0;i<batch;i++)refresh.push(ALL_SYMS[(scanIdx+i)%ALL_SYMS.length]);
+    scanIdx=(scanIdx+batch)%ALL_SYMS.length;
+    try{await fetchKline('BTCUSDT','60',60);}catch(e){}
+    await Promise.all(refresh.map(s=>loadAllKlines(s).catch(()=>{})));
+    // Оцениваем ВСЕ 27 пар
+    const newEnters=[];
+    for(const sym of ALL_SYMS){
+      let dec='',buy=false;
+      try{const H=hierarchyDecision(sym,getInd(sym));dec=H.decision;buy=H.dir==='Buy';}catch(e){continue;}
+      if(dec==='enter'&&lastSig[sym]!=='enter'&&sym!==curSym)newEnters.push({sym,buy});
+      lastSig[sym]=dec;
+      markPairSignal(sym,dec);
+    }
+    if(newEnters.length)notifyEnterMulti(newEnters);
+  }finally{scanBusy=false;}
+}
 
 // ════════════════════════════════════════════════════════
 // АКТИВАЦИЯ
@@ -1132,6 +1281,10 @@ function startApp(user){
   document.getElementById('gate').style.display='none';
   document.getElementById('app').style.display='block';
   $('hdr-user',user);
+  // Уведомления: клик активации = валидный жест для звука и запроса разрешения
+  initAudio();
+  if('Notification'in window&&Notification.permission==='default'){try{Notification.requestPermission();}catch(e){}}
+  const nb=document.getElementById('notify-badge');if(nb){nb.textContent=NOTIFY?'🔔 Сигнал вкл':'🔕 Сигнал выкл';nb.style.opacity=NOTIFY?'1':'0.5';}
   renderGrid();
   // Загрузка данных
   (async()=>{
@@ -1144,6 +1297,7 @@ function startApp(user){
       if(sym!=='BTCUSDT'&&sym!==curSym){await loadAllKlines(sym);updatePC(sym);}
     }
     runAll();
+    primeSignals();          // тихо зафиксировали стартовые статусы (без звонка)
   })();
   connectWS();
   // Интервалы
@@ -1152,6 +1306,7 @@ function startApp(user){
   setInterval(updateGoldSpread,5000);
   setInterval(()=>{updateSignalBlock();updateMTF();},10000);
   setInterval(runAll,15000);
+  setInterval(scanAllPairs,20000);   // ФОНОВЫЙ СКАНЕР всех 27 пар
   // Свечи: H1/M30 каждые 2 мин, H4/M15 каждые 5 мин
   setInterval(()=>{fetchKline(curSym,'60',60);fetchKline(curSym,'30',30);fetchKline('BTCUSDT','60',60);},120000);
   setInterval(()=>{fetchKline(curSym,'15',15);fetchKline(curSym,'240',240);},300000);
