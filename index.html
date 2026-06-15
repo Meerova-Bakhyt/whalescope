@@ -145,7 +145,7 @@ canvas{display:block;width:100%}
       <div class="logo-ico">🐋</div>
       <div>
         <div class="logo-txt">WHALESCOPE</div>
-        <div class="logo-sub">BYBIT LIVE · INSTITUTIONAL FLOW</div>
+        <div class="logo-sub">BYBIT LIVE · СБОРКА v9.4 · 15.06.2026</div>
       </div>
     </div>
     <div class="hdr-right">
@@ -622,7 +622,7 @@ function detectPullbackEntry(cc,isBuy,price){
 // BTC КОНТЕКСТ — СИММЕТРИЧНЫЙ (BUY и SELL)
 // ════════════════════════════════════════════════════════
 function getBTCContext(sym){
-  if(sym==='BTCUSDT')return{bearish:false,bullish:false,msgBuy:'',msgSell:''};
+  if(sym==='BTCUSDT'||sym==='XAUUSDT'||sym==='XAUTUSDT')return{bearish:false,bullish:false,msgBuy:'',msgSell:''};
   const btc=ST['BTCUSDT'];
   if(!btc||!btc.candles[60]||btc.candles[60].length<3)return{bearish:false,bullish:false,msgBuy:'',msgSell:''};
   const h1=detectTrend('BTCUSDT',60),h4=detectTrend('BTCUSDT',240),m30=detectTrend('BTCUSDT',30);
@@ -666,10 +666,10 @@ function hierarchyDecision(sym,ind){
   const m30Against=(isBuy&&m30==='bear')||(!isBuy&&m30==='bull');
   if(h4Against&&m30Against)return{decision:'wait',dir,reason:`Старший тренд против (H4 ${trNm(h4)}, M30 ${trNm(m30)}) — ждём`,l1:false};
 
-  // BTC симметричный фильтр
+  // BTC СИММЕТРИЧНЫЙ ФИЛЬТР — мягкий: не прячем сигнал, а помечаем осторожность + предупреждение
   const btc=getBTCContext(sym);
-  if(isBuy&&btc.bearish)return{decision:'wait',dir,reason:btc.msgBuy,l1:false,btcBlock:true};
-  if(!isBuy&&btc.bullish)return{decision:'wait',dir,reason:btc.msgSell,l1:false,btcBlock:true};
+  const btcAgainst=(isBuy&&btc.bearish)||(!isBuy&&btc.bullish);
+  const btcWarn=btcAgainst?(isBuy?btc.msgBuy:btc.msgSell):'';
 
   // Сила тренда — от 25% (начало импульса)
   const strength=getTrendStrength(sym);
@@ -694,7 +694,7 @@ function hierarchyDecision(sym,ind){
 
   if(!pull.ok){
     if(pull.inCorrection)
-      return{decision:'wait_confirm',dir,zone:pbZone,reason:`${pull.phase} — вход близко!`,l1:true,l2:true,stage,progress,strength,pull};
+      return{decision:'wait_confirm',dir,zone:pbZone,reason:`${pull.phase} — вход близко!${btcWarn?' · '+btcWarn:''}`,l1:true,l2:true,stage,progress,strength,btcWarn,pull};
     if(pull.atPeak)
       return{decision:'getting_late',dir,zone:pbZone,reason:`${pull.phase}. Не входим на вершине`,l1:true,l2:true,stage,progress,strength,pull};
     if(pull.deep)
@@ -741,7 +741,7 @@ function hierarchyDecision(sym,ind){
   const risk=Math.abs(entry-sl),reward=Math.abs(tp1-entry);
   const rr=risk>0?reward/risk:0;
 
-  if(rr<1.5)return{decision:'bad_rr',dir,zone,reason:`Плохое R:R 1:${rr.toFixed(1)} (нужно ≥1:1.5) — прибыль не оправдывает риск`,l1:true,l2:true,l3:true,stage,progress,strength,rr:rr.toFixed(1),pull};
+  if(rr<1.5)return{decision:'bad_rr',dir,zone,reason:`Риск не оправдывает прибыль — R:R 1:${rr.toFixed(1)} (нужно минимум 1:1.5)`,l1:true,l2:true,l3:true,stage,progress,strength,rr:rr.toFixed(1),pull};
 
   // Зона осторожности 50-72% — нужен R:R≥2
   let caution=false;
@@ -749,6 +749,7 @@ function hierarchyDecision(sym,ind){
     if(rr<2)return{decision:'too_late',dir,zone,reason:`Пройдено ${progress}% импульса и R:R 1:${rr.toFixed(1)} — для середины нужно R:R≥1:2`,l1:true,l2:true,l3:true,stage,progress,strength,rr:rr.toFixed(1),pull};
     caution=true;
   }
+  if(btcAgainst)caution=true;   // BTC против сделки → входим осторожно (малым объёмом)
 
   // ── УРОВЕНЬ 4: УВЕРЕННОСТЬ ──
   let conf=0;const items=[];
@@ -759,7 +760,7 @@ function hierarchyDecision(sym,ind){
   if(strength.strong){conf+=1;items.push('Сильный тренд');}
   const bos=detectBOS(sym,dir);if(bos>0){conf+=1;items.push('BOS подтверждает');}
 
-  return{decision:'enter',dir,zone,entry,tp1,sl,rr:rr.toFixed(1),conf,items,stage,progress,strength,caution,pull};
+  return{decision:'enter',dir,zone,entry,tp1,sl,rr:rr.toFixed(1),conf,items,stage,progress,strength,caution,btcWarn,pull};
 }
 </script>
 <script>
@@ -790,7 +791,7 @@ function updateSignalBlock(){
     case 'too_late':
       icon='🚂';title='ПОЗДНО ВХОДИТЬ';sub='Момент упущен · Ждём следующий сигнал';titleCol='var(--warn)';bg='rgba(255,171,0,0.05)';break;
     case 'bad_rr':
-      icon='⚠️';title='ПЛОХОЙ R:R';sub=H.reason;titleCol='var(--warn)';bg='rgba(255,171,0,0.05)';break;
+      icon='⚠️';title='РИСК НЕ ОПРАВДЫВАЕТ ПРИБЫЛЬ';sub=H.reason;titleCol='var(--warn)';bg='rgba(255,171,0,0.05)';break;
     default:
       icon='⏳';title='ЖДЁМ';sub=H.reason||'Нет чёткого тренда — наблюдаем';titleCol='var(--m2)';bg='var(--p1)';
   }
@@ -852,7 +853,7 @@ function updateSignalBlock(){
   // Совет
   let advice='💡 ';
   if(H.decision==='enter'&&!H.caution)advice+=`Вход ${isBuy?'BUY (рост)':'SELL (падение)'} после коррекции. ${H.items?H.items.join(' · '):''}. Поставьте SL обязательно!`;
-  else if(H.decision==='enter'&&H.caution)advice+=`Середина тренда — входите малым объёмом (30%) с R:R ${H.rr}. Основной потенциал уже пройден.`;
+  else if(H.decision==='enter'&&H.caution)advice+=`${H.btcWarn?H.btcWarn+'. ':'Середина тренда. '}Входите малым объёмом (30%) с R:R ${H.rr} и обязательным SL.`;
   else if(H.decision==='wait_confirm')advice+=`${H.reason}. Как появится свеча — будет вход. Не торопитесь.`;
   else if(H.decision==='getting_late')advice+=`${H.reason}. Лучше дождаться отката и нового входа, чем покупать на вершине.`;
   else if(H.decision==='too_late')advice+=`${H.reason}. Вход в хвосте тренда часто заканчивается разворотом против вас — пропустите.`;
