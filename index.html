@@ -690,7 +690,7 @@ header{background:var(--panel);border-bottom:1px solid var(--border);padding:10p
 // КОНФИГУРАЦИЯ ИНСТРУМЕНТОВ
 // ════════════════════════════════════════════════════════
 const ALL_SYMS=['XAUUSDT','XAUTUSDT','BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','TONUSDT','LTCUSDT','LINKUSDT','TRXUSDT','SUIUSDT','KASUSDT','NEARUSDT','HYPEUSDT','APTUSDT','ARBUSDT','OPUSDT','WIFUSDT','ONDOUSDT','TAOUSDT','WLDUSDT','ZECUSDT'];
-const SYM_COLOR={XAUUSDT:'#ffc107',XAUTUSDT:'#ffd54f',BTCUSDT:'#f7931a',ETHUSDT:'#7986cb',SOLUSDT:'#ab47bc',BNBUSDT:'#f0b90b',XRPUSDT:'#29b6f6',DOGEUSDT:'#c8a000',ADAUSDT:'#1565c0',AVAXUSDT:'#ef5350',TONUSDT:'#0088cc',LTCUSDT:'#bdbdbd',LINKUSDT:'#2979ff',TRXUSDT:'#e53935',SUIUSDT:'#4da2ff',KASUSDT:'#70c7ba',NEARUSDT:'#00c853',HYPEUSDT:'#9c27b0',APTUSDT:'#00bcd4',ARBUSDT:'#28a0f0',OPUSDT:'#ff0420',WIFUSDT:'#d4a373',ONDOUSDT:'#2962ff',TAOUSDT:'#00e5ff',WLDUSDT:'#000000',ZECUSDT:'#f4b728'};
+const SYM_COLOR={XAUUSDT:'#ffc107',XAUTUSDT:'#ffd54f',BTCUSDT:'#f7931a',ETHUSDT:'#7986cb',SOLUSDT:'#ab47bc',BNBUSDT:'#f0b90b',XRPUSDT:'#29b6f6',DOGEUSDT:'#c8a000',ADAUSDT:'#1565c0',AVAXUSDT:'#ef5350',TONUSDT:'#0088cc',LTCUSDT:'#bdbdbd',LINKUSDT:'#2979ff',TRXUSDT:'#e53935',SUIUSDT:'#4da2ff',KASUSDT:'#70c7ba',NEARUSDT:'#00c853',HYPEUSDT:'#9c27b0',APTUSDT:'#00bcd4',ARBUSDT:'#28a0f0',OPUSDT:'#ff0420',WIFUSDT:'#d4a373',ONDOUSDT:'#2962ff',TAOUSDT:'#00e5ff',WLDUSDT:'#e0e0e0',ZECUSDT:'#f4b728'};
 const SYM_NAME={XAUUSDT:'GOLD',XAUTUSDT:'XAUT',BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',TONUSDT:'TON',LTCUSDT:'LTC',LINKUSDT:'LINK',TRXUSDT:'TRX',SUIUSDT:'SUI',KASUSDT:'KAS',NEARUSDT:'NEAR',HYPEUSDT:'HYPE',APTUSDT:'APT',ARBUSDT:'ARB',OPUSDT:'OP',WIFUSDT:'WIF',ONDOUSDT:'ONDO',TAOUSDT:'TAO',WLDUSDT:'WLD',ZECUSDT:'ZEC'};
 const SYM_ICON={XAUUSDT:'⬡',XAUTUSDT:'🥇',BTCUSDT:'₿',ETHUSDT:'⬡',SOLUSDT:'◎',BNBUSDT:'⬡',XRPUSDT:'✕',DOGEUSDT:'Ð',ADAUSDT:'₳',AVAXUSDT:'▲',TONUSDT:'💎',LTCUSDT:'Ł',LINKUSDT:'⬡',TRXUSDT:'⬡',SUIUSDT:'⬡',KASUSDT:'⬡',NEARUSDT:'⬡',HYPEUSDT:'🔷',APTUSDT:'🅰',ARBUSDT:'🔵',OPUSDT:'🔴',WIFUSDT:'🐶',ONDOUSDT:'🏦',TAOUSDT:'🧠',WLDUSDT:'🌐',ZECUSDT:'🛡'};
 const SYM_GROUP={XAUUSDT:'Золото',XAUTUSDT:'Золото',BTCUSDT:'Крипто',ETHUSDT:'Крипто',SOLUSDT:'Крипто',BNBUSDT:'Крипто',XRPUSDT:'Крипто',DOGEUSDT:'Крипто',ADAUSDT:'Крипто',AVAXUSDT:'Крипто',TONUSDT:'Крипто',LTCUSDT:'Крипто',LINKUSDT:'Крипто',TRXUSDT:'Крипто',SUIUSDT:'Крипто',KASUSDT:'Крипто',NEARUSDT:'Крипто',HYPEUSDT:'Крипто',APTUSDT:'Крипто',ARBUSDT:'Крипто',OPUSDT:'Крипто',WIFUSDT:'Крипто',ONDOUSDT:'Крипто',TAOUSDT:'Крипто',WLDUSDT:'Крипто',ZECUSDT:'Крипто'};
@@ -1191,16 +1191,17 @@ function getTrendStage(sym,ind){
   const isBull=ind.trendH1==='bull';
   const cc=(c60.length>=10?c60:c15).slice(-20);
   const price=s.price||0;if(!price)return{pct:0,relevance:100,label:'—',color:'var(--m2)',advice:''};
-  // 1. ATR-прогресс
+  // 1. ATR-прогресс — сколько тренд реально прошёл
+  // Сильный тренд (час-два) проходит 12-18 ATR, поэтому делим на ATR*16
   let sp=cc[0].c;for(let i=1;i<cc.length;i++){if(isBull){if(cc[i].l<sp)sp=cc[i].l;}else{if(cc[i].h>sp)sp=cc[i].h;}}
   const atr=ind.atr||calcATR(c60)||price*0.01;
-  const atrPct=Math.min(100,Math.round(Math.abs(price-sp)/(atr*6)*100));
-  // 2. StochRSI штраф
+  const atrPct=Math.min(100,Math.round(Math.abs(price-sp)/(atr*16)*100));
+  // 2. StochRSI штраф — только при ЭКСТРЕМАЛЬНОЙ перекупленности/перепроданности
   let srPenalty=0,srNote='';
   if(ind.stochRsi){const K=ind.stochRsi.K;
-    if(!isBull&&K<20){srPenalty=Math.round((20-K)*3);srNote=` StochRSI K=${K} перепродан ⚠️`;}
-    else if(isBull&&K>80){srPenalty=Math.round((K-80)*3);srNote=` StochRSI K=${K} перекуплен ⚠️`;}
-    if(ind.stochRsi.cross){if((!isBull&&ind.stochRsi.cross.type==='bull'&&K<35)||(isBull&&ind.stochRsi.cross.type==='bear'&&K>65))srPenalty=Math.min(100,srPenalty+30);}}
+    if(!isBull&&K<10){srPenalty=Math.round((10-K)*2);srNote=` StochRSI K=${K} перепродан ⚠️`;}
+    else if(isBull&&K>90){srPenalty=Math.round((K-90)*2);srNote=` StochRSI K=${K} перекуплен ⚠️`;}
+    if(ind.stochRsi.cross){if((!isBull&&ind.stochRsi.cross.type==='bull'&&K<25)||(isBull&&ind.stochRsi.cross.type==='bear'&&K>75))srPenalty=Math.min(100,srPenalty+25);}}
   // 3. VWAP штраф
   let vwapPenalty=0,vwapNote='';
   if(ind.vwap&&price){const pos=(price-ind.vwap.l2)/(ind.vwap.u2-ind.vwap.l2);
@@ -1867,7 +1868,7 @@ function hierarchyDecision(sym,ind){
   // УРОВЕНЬ 3 — КОГДА ВХОДИТЬ: триггер на уровне
   // Разворотная свеча + StochRSI разворот
   // ═══════════════════════════════════════════
-  const atZone=distToZone<=0.004; // цена у зоны (в пределах 0.4%)
+  const atZone=distToZone<=0.012; // цена у зоны (в пределах 1.2% — успеваем поймать)
   const cc15=ST[sym].candles[15]||[];
   const revCandle=detectReversalCandle(cc15,isBuy);
   const sr=ind.stochRsi;
@@ -1877,13 +1878,13 @@ function hierarchyDecision(sym,ind){
   // Проверяем актуальность тренда ДО статусов ожидания
   // Если тренд истощён — нет смысла ждать свечу
   const earlyStage=getTrendStage(sym,ind);
-  if(earlyStage.relevance<15){
+  if(earlyStage.relevance<8){
     // Тренд мёртв — поезд ушёл
     return{decision:'too_late',level:3,dir,zone,
       reason:`Тренд истощён (актуальность ${earlyStage.relevance}%) — поздно входить, движение выдохлось`,
       l1ok:true,l2ok:true,l3ok:false,strength:earlyStage,atZone};
   }
-  if(earlyStage.relevance<40){
+  if(earlyStage.relevance<25){
     // Тренд стареет — позновато даже ждать свечу
     return{decision:'getting_late',level:3,dir,zone,
       reason:`Тренд стареет (актуальность ${earlyStage.relevance}%) — поздновато, движение может быть слабым`,
@@ -1937,8 +1938,8 @@ function hierarchyDecision(sym,ind){
   // Комбинированная оценка: прогресс + R:R + истощение
   // Логика: чем больше пройдено, тем выше должен быть R:R и свежесть тренда
 
-  // 1. Поезд ушёл: прогресс > 66% (2/3 пути) — однозначно поздно
-  if(progressPct>66){
+  // 1. Поздно: прогресс > 75% — однозначно поздно
+  if(progressPct>75){
     return{decision:'too_late',level:4,dir,zone,
       reason:`Поздно входить — пройдено ${progressPct}% пути к TP1. Осталось мало места, риск разворота высок`,
       l1ok:true,l2ok:true,l3ok:true,progressPct,qRR:qRR.toFixed(1),
@@ -1953,10 +1954,10 @@ function hierarchyDecision(sym,ind){
       strength:stageCheck,atZone:true};
   }
 
-  // 3. Зона осторожности: прогресс 33-66% — входим но малым объёмом
+  // 3. Зона осторожности: прогресс 50-75% — входим но малым объёмом
   // (если при этом R:R хороший — разрешаем, иначе блок)
   let cautionMode=false;
-  if(progressPct>33){
+  if(progressPct>50){
     // В средней зоне требуем R:R минимум 1:2 для компенсации риска
     if(qRR<2){
       return{decision:'too_late',level:4,dir,zone,
@@ -1967,8 +1968,8 @@ function hierarchyDecision(sym,ind){
     cautionMode=true; // входим но малым объёмом
   }
 
-  // 4. Тренд сильно истощён (актуальность < 25%) — даже при хорошем входе осторожно
-  if(stageCheck.relevance<25){
+  // 4. Тренд реально мёртв (актуальность < 8%) — финальная защита
+  if(stageCheck.relevance<8){
     return{decision:'too_late',level:4,dir,zone,
       reason:`Тренд истощён (актуальность ${stageCheck.relevance}%) — высокий риск разворота, пропускаем`,
       l1ok:true,l2ok:true,l3ok:true,progressPct,qRR:qRR.toFixed(1),
