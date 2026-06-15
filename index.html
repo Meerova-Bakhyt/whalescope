@@ -689,12 +689,12 @@ header{background:var(--panel);border-bottom:1px solid var(--border);padding:10p
 // ════════════════════════════════════════════════════════
 // КОНФИГУРАЦИЯ ИНСТРУМЕНТОВ
 // ════════════════════════════════════════════════════════
-const ALL_SYMS=['XAUUSDT','XAUTUSDT','BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','TONUSDT','LTCUSDT','LINKUSDT','TRXUSDT','SUIUSDT','KASUSDT','NEARUSDT','HYPEUSDT','APTUSDT','ARBUSDT','OPUSDT','WIFUSDT'];
-const SYM_COLOR={XAUUSDT:'#ffc107',XAUTUSDT:'#ffd54f',BTCUSDT:'#f7931a',ETHUSDT:'#7986cb',SOLUSDT:'#ab47bc',BNBUSDT:'#f0b90b',XRPUSDT:'#29b6f6',DOGEUSDT:'#c8a000',ADAUSDT:'#1565c0',AVAXUSDT:'#ef5350',TONUSDT:'#0088cc',LTCUSDT:'#bdbdbd',LINKUSDT:'#2979ff',TRXUSDT:'#e53935',SUIUSDT:'#4da2ff',KASUSDT:'#70c7ba',NEARUSDT:'#00c853',HYPEUSDT:'#9c27b0',APTUSDT:'#00bcd4',ARBUSDT:'#28a0f0',OPUSDT:'#ff0420',WIFUSDT:'#d4a373'};
-const SYM_NAME={XAUUSDT:'GOLD',XAUTUSDT:'XAUT',BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',TONUSDT:'TON',LTCUSDT:'LTC',LINKUSDT:'LINK',TRXUSDT:'TRX',SUIUSDT:'SUI',KASUSDT:'KAS',NEARUSDT:'NEAR',HYPEUSDT:'HYPE',APTUSDT:'APT',ARBUSDT:'ARB',OPUSDT:'OP',WIFUSDT:'WIF'};
-const SYM_ICON={XAUUSDT:'⬡',XAUTUSDT:'🥇',BTCUSDT:'₿',ETHUSDT:'⬡',SOLUSDT:'◎',BNBUSDT:'⬡',XRPUSDT:'✕',DOGEUSDT:'Ð',ADAUSDT:'₳',AVAXUSDT:'▲',TONUSDT:'💎',LTCUSDT:'Ł',LINKUSDT:'⬡',TRXUSDT:'⬡',SUIUSDT:'⬡',KASUSDT:'⬡',NEARUSDT:'⬡',HYPEUSDT:'🔷',APTUSDT:'🅰',ARBUSDT:'🔵',OPUSDT:'🔴',WIFUSDT:'🐶'};
-const SYM_GROUP={XAUUSDT:'Золото',XAUTUSDT:'Золото',BTCUSDT:'Крипто',ETHUSDT:'Крипто',SOLUSDT:'Крипто',BNBUSDT:'Крипто',XRPUSDT:'Крипто',DOGEUSDT:'Крипто',ADAUSDT:'Крипто',AVAXUSDT:'Крипто',TONUSDT:'Крипто',LTCUSDT:'Крипто',LINKUSDT:'Крипто',TRXUSDT:'Крипто',SUIUSDT:'Крипто',KASUSDT:'Крипто',NEARUSDT:'Крипто',HYPEUSDT:'Крипто',APTUSDT:'Крипто',ARBUSDT:'Крипто',OPUSDT:'Крипто',WIFUSDT:'Крипто'};
-const SYM_THRESH={XAUUSDT:100000,XAUTUSDT:50000,BTCUSDT:150000,ETHUSDT:50000,SOLUSDT:10000,BNBUSDT:10000,XRPUSDT:8000,DOGEUSDT:5000,ADAUSDT:5000,AVAXUSDT:8000,TONUSDT:5000,LTCUSDT:5000,LINKUSDT:5000,TRXUSDT:5000,SUIUSDT:5000,KASUSDT:3000,NEARUSDT:5000,HYPEUSDT:8000,APTUSDT:5000,ARBUSDT:5000,OPUSDT:5000,WIFUSDT:5000};
+const ALL_SYMS=['XAUUSDT','XAUTUSDT','BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','XRPUSDT','DOGEUSDT','ADAUSDT','AVAXUSDT','TONUSDT','LTCUSDT','LINKUSDT','TRXUSDT','SUIUSDT','KASUSDT','NEARUSDT','HYPEUSDT','APTUSDT','ARBUSDT','OPUSDT','WIFUSDT','ONDOUSDT','TAOUSDT','WLDUSDT','ZECUSDT'];
+const SYM_COLOR={XAUUSDT:'#ffc107',XAUTUSDT:'#ffd54f',BTCUSDT:'#f7931a',ETHUSDT:'#7986cb',SOLUSDT:'#ab47bc',BNBUSDT:'#f0b90b',XRPUSDT:'#29b6f6',DOGEUSDT:'#c8a000',ADAUSDT:'#1565c0',AVAXUSDT:'#ef5350',TONUSDT:'#0088cc',LTCUSDT:'#bdbdbd',LINKUSDT:'#2979ff',TRXUSDT:'#e53935',SUIUSDT:'#4da2ff',KASUSDT:'#70c7ba',NEARUSDT:'#00c853',HYPEUSDT:'#9c27b0',APTUSDT:'#00bcd4',ARBUSDT:'#28a0f0',OPUSDT:'#ff0420',WIFUSDT:'#d4a373',ONDOUSDT:'#2962ff',TAOUSDT:'#00e5ff',WLDUSDT:'#000000',ZECUSDT:'#f4b728'};
+const SYM_NAME={XAUUSDT:'GOLD',XAUTUSDT:'XAUT',BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',XRPUSDT:'XRP',DOGEUSDT:'DOGE',ADAUSDT:'ADA',AVAXUSDT:'AVAX',TONUSDT:'TON',LTCUSDT:'LTC',LINKUSDT:'LINK',TRXUSDT:'TRX',SUIUSDT:'SUI',KASUSDT:'KAS',NEARUSDT:'NEAR',HYPEUSDT:'HYPE',APTUSDT:'APT',ARBUSDT:'ARB',OPUSDT:'OP',WIFUSDT:'WIF',ONDOUSDT:'ONDO',TAOUSDT:'TAO',WLDUSDT:'WLD',ZECUSDT:'ZEC'};
+const SYM_ICON={XAUUSDT:'⬡',XAUTUSDT:'🥇',BTCUSDT:'₿',ETHUSDT:'⬡',SOLUSDT:'◎',BNBUSDT:'⬡',XRPUSDT:'✕',DOGEUSDT:'Ð',ADAUSDT:'₳',AVAXUSDT:'▲',TONUSDT:'💎',LTCUSDT:'Ł',LINKUSDT:'⬡',TRXUSDT:'⬡',SUIUSDT:'⬡',KASUSDT:'⬡',NEARUSDT:'⬡',HYPEUSDT:'🔷',APTUSDT:'🅰',ARBUSDT:'🔵',OPUSDT:'🔴',WIFUSDT:'🐶',ONDOUSDT:'🏦',TAOUSDT:'🧠',WLDUSDT:'🌐',ZECUSDT:'🛡'};
+const SYM_GROUP={XAUUSDT:'Золото',XAUTUSDT:'Золото',BTCUSDT:'Крипто',ETHUSDT:'Крипто',SOLUSDT:'Крипто',BNBUSDT:'Крипто',XRPUSDT:'Крипто',DOGEUSDT:'Крипто',ADAUSDT:'Крипто',AVAXUSDT:'Крипто',TONUSDT:'Крипто',LTCUSDT:'Крипто',LINKUSDT:'Крипто',TRXUSDT:'Крипто',SUIUSDT:'Крипто',KASUSDT:'Крипто',NEARUSDT:'Крипто',HYPEUSDT:'Крипто',APTUSDT:'Крипто',ARBUSDT:'Крипто',OPUSDT:'Крипто',WIFUSDT:'Крипто',ONDOUSDT:'Крипто',TAOUSDT:'Крипто',WLDUSDT:'Крипто',ZECUSDT:'Крипто'};
+const SYM_THRESH={XAUUSDT:100000,XAUTUSDT:50000,BTCUSDT:150000,ETHUSDT:50000,SOLUSDT:10000,BNBUSDT:10000,XRPUSDT:8000,DOGEUSDT:5000,ADAUSDT:5000,AVAXUSDT:8000,TONUSDT:5000,LTCUSDT:5000,LINKUSDT:5000,TRXUSDT:5000,SUIUSDT:5000,KASUSDT:3000,NEARUSDT:5000,HYPEUSDT:8000,APTUSDT:5000,ARBUSDT:5000,OPUSDT:5000,WIFUSDT:5000,ONDOUSDT:5000,TAOUSDT:8000,WLDUSDT:5000,ZECUSDT:8000};
 
 // ════════════════════════════════════════════════════════
 // СОСТОЯНИЕ
@@ -1589,7 +1589,7 @@ function updatePC(sym,price,prev){
   let dp=2;
   if(sym==='BTCUSDT')dp=0;
   else if(['DOGEUSDT','ADAUSDT','XRPUSDT','TRXUSDT','KASUSDT','WIFUSDT'].includes(sym))dp=6;
-  else if(['SUIUSDT','NEARUSDT','LINKUSDT','ARBUSDT','OPUSDT','APTUSDT','HYPEUSDT'].includes(sym))dp=4;
+  else if(['SUIUSDT','NEARUSDT','LINKUSDT','ARBUSDT','OPUSDT','APTUSDT','HYPEUSDT','ONDOUSDT','WLDUSDT'].includes(sym))dp=4;
   pe.textContent='$'+price.toLocaleString('en-US',{minimumFractionDigits:dp,maximumFractionDigits:dp});
   if(prev&&prev!==price){
     const d=((price-prev)/prev*100).toFixed(3),up=price>prev;
@@ -1880,7 +1880,7 @@ function hierarchyDecision(sym,ind){
   if(earlyStage.relevance<15){
     // Тренд мёртв — поезд ушёл
     return{decision:'too_late',level:3,dir,zone,
-      reason:`Тренд истощён (актуальность ${earlyStage.relevance}%) — поезд ушёл, движение выдохлось`,
+      reason:`Тренд истощён (актуальность ${earlyStage.relevance}%) — поздно входить, движение выдохлось`,
       l1ok:true,l2ok:true,l3ok:false,strength:earlyStage,atZone};
   }
   if(earlyStage.relevance<40){
@@ -1940,7 +1940,7 @@ function hierarchyDecision(sym,ind){
   // 1. Поезд ушёл: прогресс > 66% (2/3 пути) — однозначно поздно
   if(progressPct>66){
     return{decision:'too_late',level:4,dir,zone,
-      reason:`Поезд ушёл — пройдено ${progressPct}% пути к TP1. Осталось мало места, риск разворота высок`,
+      reason:`Поздно входить — пройдено ${progressPct}% пути к TP1. Осталось мало места, риск разворота высок`,
       l1ok:true,l2ok:true,l3ok:true,progressPct,qRR:qRR.toFixed(1),
       strength:stageCheck,atZone:true};
   }
@@ -2078,7 +2078,7 @@ function updateSignalBlock(dir,score,ind){
     bgC='rgba(41,121,255,0.07)';bdC='rgba(41,121,255,0.45)';titleCol='var(--accent)';entryStatus='wait_confirm';
   } else if(H.decision==='too_late'||H.decision==='bad_rr'){
     // 🚂 ПОЕЗД УШЁЛ
-    icon='🚂';title='ПОЕЗД УШЁЛ';
+    icon='🚂';title='ПОЗДНО ВХОДИТЬ';
     sub=H.decision==='bad_rr'?`Невыгодное соотношение риск/прибыль · Пропустить`:`Момент упущен · Ждём следующий сигнал`;
     bgC='rgba(255,171,0,0.07)';bdC='rgba(255,171,0,0.4)';titleCol='var(--warn)';entryStatus='too_late';
   } else {
@@ -2095,28 +2095,32 @@ function updateSignalBlock(dir,score,ind){
   if(sd){sd.style.background=bgC;sd.style.border=`1px solid ${bdC}`;}
   $('sig-icon',icon);$('sig-title',title);$c('sig-title',titleCol);$('sig-sub',sub);$c('sig-sub',titleCol);
 
-  // ТВХ — берём из зоны иерархии или из smart
+  // ТВХ — показываем уровни ТОЛЬКО когда вход реально возможен
+  // ВХОДИТЬ / ОСТОРОЖНО / ПОЧТИ ГОТОВ — да
+  // ЖДЁМ / ПОЕЗД УШЁЛ / ПЛОХОЙ R:R / ПОЗДНОВАТО — нет (скрываем)
   let entryVal='—',tp1='—',tp2='—',tp3='—',slVal='—',rr='—',tp1s='',tp2s='',tp3s='',sls='';
-  if(H.zone&&(H.decision==='wait_pullback'||H.decision==='wait_confirm'||H.decision==='enter'||H.decision==='too_late'||H.decision==='bad_rr'||H.decision==='getting_late')){
+  const showLevels=(H.decision==='enter'||H.decision==='wait_confirm'||H.decision==='getting_late');
+  if(showLevels&&H.zone){
     // ТВХ на зоне отката
     const atr=ind.atr||price*0.002;
     const entry=+(isBuy?H.zone.price+atr*0.1:H.zone.price-atr*0.1).toFixed(2);
     entryVal='$'+entry;
     if(smart){tp1=smart.tp1;tp2=smart.tp2;tp3=smart.tp3;slVal=smart.sl;rr=smart.rr;tp1s=smart.tp1Src;tp2s=smart.tp2Src;tp3s=smart.tp3Src;sls=smart.slSrc;}
-  } else if(smart&&smart.entry){
-    entryVal=smart.entry;tp1=smart.tp1;tp2=smart.tp2;tp3=smart.tp3;slVal=smart.sl;rr=smart.rr;tp1s=smart.tp1Src;tp2s=smart.tp2Src;tp3s=smart.tp3Src;sls=smart.slSrc;
   }
   $('sig-entry',entryVal);$c('sig-entry',entryStatus==='enter'?col:'var(--warn)');
 
-  // Прогресс отработки
-  const entryN=parseFloat((entryVal||'$0').replace(/[$,]/g,''));
-  const tp1N=parseFloat((tp1||'$0').replace(/[$,]/g,''));
-  const slN=parseFloat((slVal||'$0').replace(/[$,]/g,''));
-  const prog=hDir?calcProgress(sym,hDir,entryN,tp1N,slN):{progress:0,relevance:100,label:'—',color:'var(--m2)'};
+  // Прогресс отработки — только когда есть уровни
+  let prog={progress:0,relevance:100,label:'—',color:'var(--m2)'};
+  if(showLevels&&hDir){
+    const entryN=parseFloat((entryVal||'$0').replace(/[$,]/g,''));
+    const tp1N=parseFloat((tp1||'$0').replace(/[$,]/g,''));
+    const slN=parseFloat((slVal||'$0').replace(/[$,]/g,''));
+    prog=calcProgress(sym,hDir,entryN,tp1N,slN);
+  }
   const pb=document.getElementById('sig-prog-bar');if(pb){pb.style.width=prog.progress+'%';pb.style.background=prog.color;}
-  $('sig-prog-num',prog.relevance+'%');$c('sig-prog-num',prog.color);
+  $('sig-prog-num',showLevels?prog.relevance+'%':'—');$c('sig-prog-num',prog.color);
   $('sig-prog-label',prog.label);$c('sig-prog-label',prog.color);
-  $('sig-aktual','Акт: '+prog.relevance+'%');
+  $('sig-aktual',showLevels?'Акт: '+prog.relevance+'%':'—');
 
   $('sig-tp1',tp1);$('sig-tp1-src',tp1s);$('sig-tp2',tp2);$('sig-tp2-src',tp2s);
   $('sig-tp3',tp3);$('sig-tp3-src',tp3s);$('sig-sl',slVal);$('sig-sl-src',sls);
