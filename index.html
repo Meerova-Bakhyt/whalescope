@@ -1076,9 +1076,15 @@ function calcScore(side,ind){
   const isBuy=side==='Buy';
   const s=ST[curSym];
   if(s.prices.length<10)return 0;
-  // H4 ФИЛЬТР — полная блокировка
-  if((isBuy&&ind.trendH4==='bear')||(!isBuy&&ind.trendH4==='bull'))return 0;
-  let sc=0;
+  // H4 фильтр — НЕ полная блокировка (H4 медленный, отстаёт в начале импульса)
+  // Если H4 против — штраф, но не обнуление: даём шанс началу импульса по H1/M30
+  let h4penalty=0;
+  if((isBuy&&ind.trendH4==='bear')||(!isBuy&&ind.trendH4==='bull')){
+    // H4 против — но если M30 уже развернулся, штраф меньше (начало импульса)
+    const m30With=(isBuy&&ind.trendM30==='bull')||(!isBuy&&ind.trendM30==='bear');
+    h4penalty=m30With?2:4; // M30 подтверждает разворот → меньше штраф
+  }
+  let sc=-h4penalty;
 
   // ══ БЛОК 1: ТАЙМФРЕЙМЫ ══
   if(ind.trendH1!=='unknown'){if((isBuy&&ind.trendH1==='bull')||(!isBuy&&ind.trendH1==='bear'))sc+=3;else if((isBuy&&ind.trendH1==='bear')||(!isBuy&&ind.trendH1==='bull'))sc-=4;}
@@ -1794,25 +1800,42 @@ function hierarchyDecision(sym,ind){
 
   // ═══════════════════════════════════════════
   // УРОВЕНЬ 1 — РЕШАЮЩИЙ: можно ли вообще торговать?
-  // H1 + H4 тренд + BTC фильтр
+  // ГЛАВНОЕ: H1 задаёт направление (реагирует вовремя)
+  // H4 — это РАЗРЕШЕНИЕ, а не требование (он медленный, разворачивается последним)
+  // Это позволяет ловить НАЧАЛО импульса, а не его конец
   // ═══════════════════════════════════════════
-  const h1=ind.trendH1,h4=ind.trendH4;
+  const h1=ind.trendH1,h4=ind.trendH4,m30=ind.trendM30,m15=ind.trendM15;
 
-  // Определяем главное направление по H1+H4
+  // Направление задаёт H1 — он реагирует на импульс вовремя
   let dir=null;
-  if((h1==='bull'||h1==='neutral')&&h4==='bull')dir='Buy';
-  else if((h1==='bear'||h1==='neutral')&&h4==='bear')dir='Sell';
-  else if(h1==='bull'&&(h4==='bull'||h4==='neutral'))dir='Buy';
-  else if(h1==='bear'&&(h4==='bear'||h4==='neutral'))dir='Sell';
+  if(h1==='bull')dir='Buy';
+  else if(h1==='bear')dir='Sell';
+  else if(h1==='neutral'){
+    // H1 нейтрален — смотрим на M30+M15 (ранний сигнал импульса)
+    if(m30==='bull'&&m15==='bull')dir='Buy';
+    else if(m30==='bear'&&m15==='bear')dir='Sell';
+  }
 
-  // H1 и H4 расходятся — НЕ ТОРГУЕМ
-  if(!dir||(h1==='bull'&&h4==='bear')||(h1==='bear'&&h4==='bull')){
+  // Нет направления вообще — ждём
+  if(!dir){
     return{decision:'no_trade',level:1,dir:null,
-      reason:`H1 (${trNm(h1)}) и H4 (${trNm(h4)}) расходятся — НЕ ТОРГУЕМ`,
+      reason:`Нет чёткого направления (H1 ${trNm(h1)}, M30 ${trNm(m30)}) — наблюдаем`,
       l1ok:false};
   }
 
   const isBuy=dir==='Buy';
+
+  // H4 ФИЛЬТР-РАЗРЕШЕНИЕ: блокируем ТОЛЬКО если H4 СИЛЬНО против
+  // (т.е. вход BUY когда H4 медвежий И M30 тоже медвежий —真 против тренда)
+  // Если H4 против но M30/M15 уже развернулись — это НАЧАЛО импульса, разрешаем
+  const h4Against=(isBuy&&h4==='bear')||(!isBuy&&h4==='bull');
+  const m30Against=(isBuy&&m30==='bear')||(!isBuy&&m30==='bull');
+  if(h4Against&&m30Against){
+    // И H4 и M30 против — это реально против тренда, не входим
+    return{decision:'no_trade',level:1,dir,
+      reason:`Старший тренд против (H4 ${trNm(h4)}, M30 ${trNm(m30)}) — ждём разворота`,
+      l1ok:false};
+  }
 
   // BTC фильтр (для альтов)
   const btcCtx=getBTCContext();
@@ -1821,11 +1844,13 @@ function hierarchyDecision(sym,ind){
       reason:btcCtx.msg,l1ok:false,btcBlock:true};
   }
 
-  // Сила тренда — входим только в сильный или средний
+  // Сила тренда — для НАЧАЛА импульса достаточно слабой силы
+  // (импульс только зарождается, сила нарастает потом)
   const strength=getTrendStrength(sym,ind);
-  if(!strength.strong&&!strength.medium){
+  if(strength.pct<25){
+    // Совсем нет силы — это боковик, не импульс
     return{decision:'no_trade',level:1,dir,
-      reason:`Тренд слишком слабый (${strength.pct}%) — ждём усиления`,
+      reason:`Тренд слишком слабый (${strength.pct}%) — пока боковик, ждём импульс`,
       l1ok:false,weak:true,strength};
   }
 
@@ -1874,21 +1899,36 @@ function hierarchyDecision(sym,ind){
   const sr=ind.stochRsi;
   const srOk=sr&&(isBuy?(sr.K<40&&(sr.cross?.type==='bull'||sr.K>sr.D)):(sr.K>60&&(sr.cross?.type==='bear'||sr.K<sr.D)));
 
-  // ── РАННЯЯ ПРОВЕРКА ИСТОЩЕНИЯ ──
-  // Проверяем актуальность тренда ДО статусов ожидания
-  // Если тренд истощён — нет смысла ждать свечу
+  // ── РАННЯЯ ПРОВЕРКА ИСТОЩЕНИЯ И ПРОГРЕССА ──
+  // Проверяем актуальность тренда И прогресс ДО статусов ожидания
+  // Если тренд истощён ИЛИ цена уже далеко прошла — нет смысла ждать свечу
   const earlyStage=getTrendStage(sym,ind);
-  if(earlyStage.relevance<8){
-    // Тренд мёртв — поезд ушёл
-    return{decision:'too_late',level:3,dir,zone,
-      reason:`Тренд истощён (актуальность ${earlyStage.relevance}%) — поздно входить, движение выдохлось`,
-      l1ok:true,l2ok:true,l3ok:false,strength:earlyStage,atZone};
+
+  // Прогресс: насколько цена уже ушла от начала тренда к потенциальной цели
+  // Если цена уже у вершины движения — поздно даже "почти готов"
+  const cc60e=ST[sym].candles[60]||[];
+  let earlyProgress=0;
+  if(cc60e.length>=10){
+    const recent=cc60e.slice(-20);
+    let swingLow=recent[0].c,swingHigh=recent[0].c;
+    recent.forEach(c=>{if(c.l<swingLow)swingLow=c.l;if(c.h>swingHigh)swingHigh=c.h;});
+    const range=(swingHigh-swingLow)||1;
+    // Для BUY: как высоко цена от низа (100% = у вершины)
+    // Для SELL: как низко цена от верха
+    earlyProgress=isBuy?Math.round((price-swingLow)/range*100):Math.round((swingHigh-price)/range*100);
   }
-  if(earlyStage.relevance<25){
-    // Тренд стареет — позновато даже ждать свечу
+
+  if(earlyStage.relevance<8||earlyProgress>=88){
+    // Тренд мёртв ИЛИ цена у самой вершины — поезд ушёл
+    return{decision:'too_late',level:3,dir,zone,
+      reason:earlyProgress>=88?`Цена у вершины движения (пройдено ${earlyProgress}%) — поздно входить, ждём откат`:`Тренд истощён (актуальность ${earlyStage.relevance}%) — поздно входить, движение выдохлось`,
+      l1ok:true,l2ok:true,l3ok:false,strength:earlyStage,atZone,progressPct:earlyProgress};
+  }
+  if(earlyStage.relevance<25||earlyProgress>=70){
+    // Тренд стареет ИЛИ цена высоко — позновато даже ждать свечу
     return{decision:'getting_late',level:3,dir,zone,
-      reason:`Тренд стареет (актуальность ${earlyStage.relevance}%) — поздновато, движение может быть слабым`,
-      l1ok:true,l2ok:true,l3ok:false,strength:earlyStage,atZone};
+      reason:earlyProgress>=70?`Цена высоко (пройдено ${earlyProgress}%) — поздновато, входить малым объёмом или ждать откат`:`Тренд стареет (актуальность ${earlyStage.relevance}%) — поздновато, движение может быть слабым`,
+      l1ok:true,l2ok:true,l3ok:false,strength:earlyStage,atZone,progressPct:earlyProgress};
   }
 
   if(!atZone){
