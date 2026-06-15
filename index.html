@@ -568,56 +568,52 @@ function getTrendStage(sym,ind){
 // Вход ТОЛЬКО после отката, на продолжении тренда
 // ════════════════════════════════════════════════════════
 function detectPullbackEntry(cc,isBuy,price){
-  if(!cc||cc.length<10)return{ok:false,phase:'мало данных',wait:true};
-  const win=cc.slice(-14);
-  const c=win[win.length-1],prev=win[win.length-2];
-  const px=(price!=null&&!isNaN(price))?price:c.c;
-  // Свинг-структура внутри окна
-  let peak=-Infinity,peakIdx=0,trough=Infinity,troughIdx=0;
-  win.forEach((x,i)=>{if(x.h>peak){peak=x.h;peakIdx=i;}if(x.l<trough){trough=x.l;troughIdx=i;}});
+  if(!cc||cc.length<12)return{ok:false,phase:'мало данных',wait:true};
+  const win=cc.slice(-16);
+  const closed=win.slice(0,win.length-1);              // СТРУКТУРА только по закрытым свечам (живая не рушит её)
+  const px=(price!=null&&!isNaN(price))?price:win[win.length-1].c;
 
   if(isBuy){
-    // Импульс вверх = от свинг-минимума (ДО пика) до пика
-    const before=win.slice(0,peakIdx+1);
+    // Пик и импульсная нога по закрытым свечам
+    let peak=-Infinity,peakIdx=0;
+    closed.forEach((x,i)=>{if(x.h>peak){peak=x.h;peakIdx=i;}});
+    const before=closed.slice(0,peakIdx+1);
     const swingLow=Math.min(...before.map(x=>x.l));
     const impulse=peak-swingLow;
     if(impulse<=0)return{ok:false,phase:'восходящего импульса нет — ждём',wait:true};
-    const after=win.slice(peakIdx+1);
-    if(after.length<1)return{ok:false,phase:'цена на пике, отката ещё нет — ждём',atPeak:true};
-    const pbLow=Math.min(...after.map(x=>x.l));
-    const retrace=(peak-pbLow)/impulse;                 // фибо-откат от импульса (знаменатель не схлопывается)
-    if(retrace<0.15)return{ok:false,phase:'откат мелкий (<15%) — цена у пика, ждём',atPeak:true,retrace:Math.round(retrace*100)};
+    // Дно отката = минимум закрытых свечей после пика + текущая цена
+    const after=closed.slice(peakIdx+1);
+    let pbLow=after.length?Math.min(...after.map(x=>x.l)):px;
+    if(px<pbLow)pbLow=px;
+    const retrace=(peak-pbLow)/impulse;
+    if(retrace<0.15)return{ok:false,phase:'откат мелкий (<15%) — цена у пика, ждём откат',atPeak:true,retrace:Math.round(retrace*100)};
     if(retrace>0.85)return{ok:false,phase:`откат глубокий (${Math.round(retrace*100)}%>85%) — импульс под вопросом`,deep:true,retrace:Math.round(retrace*100)};
-    // Прогресс ВНУТРИ нового импульса: 0% у дна отката, 100% у пика
+    // Прогресс ВНУТРИ нового импульса: 0% у дна, 100% у пика
     const span=(peak-pbLow)||1;
-    const localProg=Math.max(0,Math.min(100,Math.round((px-pbLow)/span*100)));
-    // Ещё падаем? (новый минимум на последней свече / цена у дна) → коррекция продолжается
-    const stillFalling=c.l<=pbLow*1.0003||px<=pbLow*1.0008;
-    if(stillFalling)return{ok:false,phase:'коррекция вниз продолжается — ждём зелёную свечу',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbLow,peak,swingLow,impulse};
-    // Возобновление: цена поднялась от дна на ≥5% импульса И свеча зелёная
-    const lifted=px>pbLow+impulse*0.05;
-    const green=c.c>=c.o&&c.c>=prev.c*0.999;
-    if(!(lifted&&green))return{ok:false,phase:'разворот вверх ещё не подтверждён — ждём зелёную свечу',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbLow,peak,swingLow,impulse};
+    const localProg=Math.max(0,Math.min(150,Math.round((px-pbLow)/span*100)));
+    // ВОЗОБНОВЛЕНИЕ = цена отошла от дна на ≥10% импульса (устойчиво, без привязки к одной свече)
+    const lifted=px>=pbLow+impulse*0.10;
+    if(!lifted)return{ok:false,phase:'коррекция у дна — ждём разворота вверх',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbLow,peak,swingLow,impulse};
     return{ok:true,phase:`откат ${Math.round(retrace*100)}% завершён — новый импульс вверх ↑`,retrace:Math.round(retrace*100),localProg,pbLow,peak,swingLow,impulse};
   } else {
-    // Импульс вниз = от свинг-максимума (ДО дна) до дна
-    const before=win.slice(0,troughIdx+1);
+    // Дно и импульсная нога вниз по закрытым свечам
+    let trough=Infinity,troughIdx=0;
+    closed.forEach((x,i)=>{if(x.l<trough){trough=x.l;troughIdx=i;}});
+    const before=closed.slice(0,troughIdx+1);
     const swingHigh=Math.max(...before.map(x=>x.h));
     const impulse=swingHigh-trough;
     if(impulse<=0)return{ok:false,phase:'нисходящего импульса нет — ждём',wait:true};
-    const after=win.slice(troughIdx+1);
-    if(after.length<1)return{ok:false,phase:'цена на дне, отскока ещё нет — ждём',atPeak:true};
-    const pbHigh=Math.max(...after.map(x=>x.h));
+    const after=closed.slice(troughIdx+1);
+    let pbHigh=after.length?Math.max(...after.map(x=>x.h)):px;
+    if(px>pbHigh)pbHigh=px;
     const retrace=(pbHigh-trough)/impulse;
-    if(retrace<0.15)return{ok:false,phase:'отскок мелкий (<15%) — цена у дна, ждём',atPeak:true,retrace:Math.round(retrace*100)};
+    if(retrace<0.15)return{ok:false,phase:'отскок мелкий (<15%) — цена у дна, ждём отскок',atPeak:true,retrace:Math.round(retrace*100)};
     if(retrace>0.85)return{ok:false,phase:`отскок глубокий (${Math.round(retrace*100)}%>85%) — импульс под вопросом`,deep:true,retrace:Math.round(retrace*100)};
     const span=(pbHigh-trough)||1;
-    const localProg=Math.max(0,Math.min(100,Math.round((pbHigh-px)/span*100)));
-    const stillRising=c.h>=pbHigh*0.9997||px>=pbHigh*0.9992;
-    if(stillRising)return{ok:false,phase:'отскок вверх продолжается — ждём красную свечу',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbHigh,trough,swingHigh,impulse};
-    const lifted=px<pbHigh-impulse*0.05;
-    const red=c.c<=c.o&&c.c<=prev.c*1.001;
-    if(!(lifted&&red))return{ok:false,phase:'разворот вниз ещё не подтверждён — ждём красную свечу',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbHigh,trough,swingHigh,impulse};
+    const localProg=Math.max(0,Math.min(150,Math.round((pbHigh-px)/span*100)));
+    // ВОЗОБНОВЛЕНИЕ = цена отошла вниз от вершины отскока на ≥10% импульса
+    const lifted=px<=pbHigh-impulse*0.10;
+    if(!lifted)return{ok:false,phase:'отскок у вершины — ждём разворота вниз',inCorrection:true,retrace:Math.round(retrace*100),localProg,pbHigh,trough,swingHigh,impulse};
     return{ok:true,phase:`отскок ${Math.round(retrace*100)}% завершён — новый импульс вниз ↓`,retrace:Math.round(retrace*100),localProg,pbHigh,trough,swingHigh,impulse};
   }
 }
