@@ -702,6 +702,24 @@ function hierarchyDecision(sym,ind){
     return{decision:'wait',dir,reason:pull.phase,l1:true,stage,progress,strength,pull};
   }
 
+  // ── ГЛОБАЛЬНЫЙ ФИЛЬТР ВЕРШИНЫ (исправление top-buy: случай SOL) ──
+  // detectPullbackEntry видит только 16 свечей M15 и не знает, что локальный
+  // «пик» = вершина ВСЕГО импульса H1. Проверяем положение цены в диапазоне H1:
+  // у верхушки = это пик, а не откат внутри тренда → вход блокируем.
+  const c60g=ST[sym].candles[60]||[];
+  let globalPos=null;
+  if(c60g.length>=10){
+    const wg=c60g.slice(-20);
+    const hiG=Math.max(...wg.map(x=>x.h)),loG=Math.min(...wg.map(x=>x.l));
+    if(hiG>loG)globalPos=isBuy?(price-loG)/(hiG-loG):(hiG-price)/(hiG-loG);
+  }
+  const extremeWord=isBuy?'вершины':'дна';
+  const edgeWord=isBuy?'верхней':'нижней';
+  if(globalPos!=null&&globalPos>=0.85)
+    return{decision:'too_late',dir,reason:`Цена у ${extremeWord} импульса H1 (${Math.round(globalPos*100)}% диапазона) — это ${isBuy?'пик':'дно'}, а не ${isBuy?'откат':'отскок'} внутри тренда. Ждём новый ${isBuy?'откат':'отскок'}.`,l1:true,l2:true,stage,progress,strength,pull,globalPos:Math.round(globalPos*100)};
+  if(globalPos!=null&&globalPos>=0.72)
+    return{decision:'getting_late',dir,zone:pbZone,reason:`Цена в ${edgeWord} части импульса H1 (${Math.round(globalPos*100)}% диапазона) — поздновато, лучше дождаться ${isBuy?'отката':'отскока'}`,l1:true,l2:true,stage,progress,strength,pull,globalPos:Math.round(globalPos*100)};
+
   // Возобновление есть — но не слишком ли поздно? (цена уже почти у пика?)
   if(progress>=88)
     return{decision:'too_late',dir,reason:`Цена восстановилась на ${progress}% импульса — поздно, ждём новый откат`,l1:true,l2:true,stage,progress,strength,pull};
