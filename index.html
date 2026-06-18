@@ -791,6 +791,7 @@ function updateSignalBlock(){
   const price=ST[sym].price;
   const isBuy=H.dir==='Buy';
   const dirCol=isBuy?'var(--buy)':'var(--sell)';
+  const dW=H.dir?(isBuy?'BUY':'SELL'):'';   // слово направления для вердиктов (пусто, если направления ещё нет)
   $('sig-updated',new Date().toLocaleTimeString('ru-RU'));
 
   // Маппинг decision → вердикт
@@ -799,19 +800,19 @@ function updateSignalBlock(){
     case 'loading':
       icon='⏳';title='ЗАГРУЗКА ДАННЫХ';sub='Получаем свечи с биржи...';titleCol='var(--m2)';bg='var(--p1)';break;
     case 'enter':
-      if(H.caution){icon='📈';title='ОСТОРОЖНО — '+(isBuy?'BUY':'SELL');sub='Середина движения · Вход малым объёмом (30%)';titleCol='var(--warn)';bg='rgba(255,171,0,0.06)';}
-      else{icon='🚀';title='ВХОДИТЬ — '+(isBuy?'BUY':'SELL');sub=H.pull?H.pull.phase:'Свежий вход после коррекции';titleCol=dirCol;bg=isBuy?'rgba(0,230,118,0.07)':'rgba(255,23,68,0.07)';}
+      if(H.caution){icon='📈';title='ОСТОРОЖНО — '+dW;sub='Середина движения · Вход малым объёмом (30%)';titleCol='var(--warn)';bg='rgba(255,171,0,0.06)';}
+      else{icon='🚀';title='ВХОДИТЬ — '+dW;sub=H.pull?H.pull.phase:'Свежий вход после коррекции';titleCol=dirCol;bg=isBuy?'rgba(0,230,118,0.07)':'rgba(255,23,68,0.07)';}
       showLevels=true;entryStatus='enter';break;
     case 'wait_confirm':
-      icon='⏰';title='ПОЧТИ ГОТОВ — '+(isBuy?'BUY':'SELL');sub=H.reason;titleCol='var(--accent)';bg='rgba(41,121,255,0.06)';showLevels=true;entryStatus='wait_confirm';break;
+      icon='⏰';title='ПОЧТИ ГОТОВ — '+dW;sub=H.reason;titleCol='var(--accent)';bg='rgba(41,121,255,0.06)';showLevels=true;entryStatus='wait_confirm';break;
     case 'getting_late':
-      icon='🟠';title='ПОЗДНОВАТО';sub=H.reason;titleCol='#ff8800';bg='rgba(255,136,0,0.06)';showLevels=true;entryStatus='getting_late';break;
+      icon='🟠';title='ПОЗДНОВАТО — '+dW;sub=H.reason;titleCol='#ff8800';bg='rgba(255,136,0,0.06)';showLevels=true;entryStatus='getting_late';break;
     case 'too_late':
-      icon='🚂';title='ПОЗДНО ВХОДИТЬ';sub='Момент упущен · Ждём следующий сигнал';titleCol='var(--warn)';bg='rgba(255,171,0,0.05)';break;
+      icon='🚂';title='ПОЗДНО ВХОДИТЬ — '+dW;sub='Момент упущен · Ждём следующий сигнал';titleCol='var(--warn)';bg='rgba(255,171,0,0.05)';break;
     case 'bad_rr':
       icon='⚠️';title='РИСК НЕ ОПРАВДЫВАЕТ ПРИБЫЛЬ';sub=H.reason;titleCol='var(--warn)';bg='rgba(255,171,0,0.05)';break;
     default:
-      icon='⏳';title='ЖДЁМ';sub=H.reason||'Нет чёткого тренда — наблюдаем';titleCol='var(--m2)';bg='var(--p1)';
+      icon='⏳';title=dW?'ЖДЁМ — '+dW:'ЖДЁМ';sub=H.reason||'Нет чёткого тренда — наблюдаем';titleCol='var(--m2)';bg='var(--p1)';
   }
 
   $('sig-icon',icon);$('sig-title',title);$c('sig-title',titleCol);$('sig-sub',sub);
