@@ -785,25 +785,37 @@ function trendDirOf(sym){
   if((isBuy&&h4==='bear')||(!isBuy&&h4==='bull'))return null;
   return d;
 }
-// оценка одного сетапа: все подтверждения в сторону dir
+// Профили строгости: чем строже — тем сильнее зона, ближе к зоне, больше подтверждений
+const PROF={
+  soft:  {minTouch:2, freshMax:2.4, minTrig:2, needStrong:false, needStruct:false},
+  norm:  {minTouch:3, freshMax:1.7, minTrig:3, needStrong:true,  needStruct:false},
+  strict:{minTouch:3, freshMax:1.3, minTrig:4, needStrong:true,  needStruct:true}
+};
+
+// оценка одного сетапа: все подтверждения в сторону dir + сила реакции + свежесть
 function evalSetup(sym,dir,zonePrice,ind,sr){
   const isBuy=dir==='Buy',price=ST[sym].price;
   const m15=ST[sym].candles[15]||[],m5=ST[sym].candles[5]||[],m30=ST[sym].candles[30]||[];
+  const atrM15=calcATR(m15)||price*0.002;
   const fib=detectFibEntry(sym,dir);
   const react=analyzeLevelReaction(sym,dir,zonePrice,sr);
   const m30shift=detectCHoCH(m30,isBuy)||obArr(m30,isBuy).found||fvgArr(m30,isBuy).found;
   const m15ok=detectCHoCH(m15,isBuy)||bosArr(m15,isBuy);
   const m5ok=(m5.length>=10)?(detectCHoCH(m5,isBuy)||bosArr(m5,isBuy)):false;
   const structBreak=m15ok||m5ok;
-  const pats=detectPatterns(m15),trigPat=pats.find(p=>(isBuy&&p.dir==='buy')||(!isBuy&&p.dir==='sell'));
+  const pats=detectPatterns(m15);
+  const trigPat=pats.find(p=>(isBuy&&p.dir==='buy')||(!isBuy&&p.dir==='sell'));
+  const strongPat=pats.find(p=>((isBuy&&p.dir==='buy')||(!isBuy&&p.dir==='sell'))&&p.str>=2); // поглощение/молот/звезда
   const confC=confirmCandle(m15,isBuy)||!!trigPat;
+  const strongReaction=react.sweep||!!strongPat;        // свип ликвидности ИЛИ сильный разворотный паттерн
   const tStruct=structBreak,tFib=!!(fib.found&&fib.inPocket),tSR=react.type!=='none',tLiq=react.sweep,tCandle=confC;
   const trigCount=[tStruct,tFib,tSR,tLiq,tCandle].filter(Boolean).length;
-  return{fib,react,m30shift,structBreak,trigPat,tStruct,tFib,tSR,tLiq,tCandle,trigCount};
+  const freshDist=Math.abs(price-zonePrice)/atrM15;     // как далеко цена ушла от зоны (в ATR)
+  return{fib,react,m30shift,structBreak,trigPat,strongPat,strongReaction,tStruct,tFib,tSR,tLiq,tCandle,trigCount,freshDist,atrM15};
 }
 
 // ════════════════════════════════════════════════════════
-// ЕДИНАЯ ВОРОНКА ТВХ — ДВА РЕЖИМА: разворот у зоны + вход по тренду
+// ЕДИНАЯ ВОРОНКА ТВХ — ранний вход у зоны + фильтр свежести
 // ════════════════════════════════════════════════════════
 function hierarchyDecision(sym,ind){
   const price=ST[sym].price||0;
@@ -812,89 +824,88 @@ function hierarchyDecision(sym,ind){
   const atr=ind.atr||price*0.002;
   const sr=detectSR(sym),liq=detectLiquidity(sym);
   const tol=atr*1.8;
+  const prof=PROF[STRICT]||PROF.norm;
 
-  // ── Кандидаты-сетапы (цена ТЕСТИРУЕТ зону прямо сейчас) ──
+  // Кандидаты-сетапы (цена тестирует зону прямо сейчас)
   const cands=[];
-  sr.support.forEach(z=>{if(Math.abs(price-z.price)<=tol)cands.push({dir:'Buy',mode:'rev',zone:z.price,label:`Поддержка (${z.touches}кас.)`,w:z.touches});});
-  sr.resistance.forEach(z=>{if(Math.abs(price-z.price)<=tol)cands.push({dir:'Sell',mode:'rev',zone:z.price,label:`Сопротивление (${z.touches}кас.)`,w:z.touches});});
-  liq.sellside.forEach(z=>{if(Math.abs(price-z.price)<=tol)cands.push({dir:'Buy',mode:'rev',zone:z.price,label:'Ликвидность снизу',w:2});});
-  liq.buyside.forEach(z=>{if(Math.abs(price-z.price)<=tol)cands.push({dir:'Sell',mode:'rev',zone:z.price,label:'Ликвидность сверху',w:2});});
+  sr.support.forEach(z=>{if(Math.abs(price-z.price)<=tol)cands.push({dir:'Buy',mode:'rev',zone:z.price,label:`Поддержка (${z.touches}кас.)`,touches:z.touches,w:z.touches});});
+  sr.resistance.forEach(z=>{if(Math.abs(price-z.price)<=tol)cands.push({dir:'Sell',mode:'rev',zone:z.price,label:`Сопротивление (${z.touches}кас.)`,touches:z.touches,w:z.touches});});
+  liq.sellside.forEach(z=>{if(Math.abs(price-z.price)<=tol)cands.push({dir:'Buy',mode:'rev',zone:z.price,label:'Ликвидность снизу',touches:2,liq:true,w:2});});
+  liq.buyside.forEach(z=>{if(Math.abs(price-z.price)<=tol)cands.push({dir:'Sell',mode:'rev',zone:z.price,label:'Ликвидность сверху',touches:2,liq:true,w:2});});
   const rev=detectReversalZone(sym);
-  if(rev.found)cands.push({dir:rev.dir,mode:'rev',zone:rev.zonePrice,label:'Экстремум H1',w:4,rsi:rev.rsi,pattern:rev.pattern,h4align:rev.h4align});
-  // continuation — откат по тренду к зоне/Фибо-карману
+  if(rev.found)cands.push({dir:rev.dir,mode:'rev',zone:rev.zonePrice,label:'Экстремум H1',touches:4,extreme:true,w:4,pattern:rev.pattern,h4align:rev.h4align});
   const tdir=trendDirOf(sym);
-  if(tdir){
-    const isBuy=tdir==='Buy';const fib=detectFibEntry(sym,tdir);
-    let z=isBuy?(sr.support[0]?sr.support[0].price:null):(sr.resistance[0]?sr.resistance[0].price:null);
-    if(z==null&&fib.found)z=isBuy?fib.pocketLo:fib.pocketHi;
-    if(z!=null&&(Math.abs(price-z)<=tol*1.6||(fib.found&&fib.inPocket)))
-      cands.push({dir:tdir,mode:'trend',zone:z,label:'Откат по тренду '+(isBuy?'↑':'↓'),w:3});
-  }
+  if(tdir){const isB=tdir==='Buy';const fb=detectFibEntry(sym,tdir);
+    let z=isB?(sr.support[0]?sr.support[0].price:null):(sr.resistance[0]?sr.resistance[0].price:null);
+    let tch=isB?(sr.support[0]?sr.support[0].touches:2):(sr.resistance[0]?sr.resistance[0].touches:2);
+    if(z==null&&fb.found){z=isB?fb.pocketLo:fb.pocketHi;tch=2;}
+    if(z!=null&&(Math.abs(price-z)<=tol*1.6||(fb.found&&fb.inPocket)))cands.push({dir:tdir,mode:'trend',zone:z,label:'Откат по тренду '+(isB?'↑':'↓'),touches:tch,trend:true,w:3});}
 
-  if(!cands.length)
-    return{decision:'wait',dir:null,reason:'Цена не у зоны входа — ждём подхода к уровню S/R, ликвидности или Фибо-карману',l1:false};
+  if(!cands.length)return{decision:'wait',dir:null,reason:'Цена не у зоны входа — ждём подхода к уровню S/R, ликвидности или Фибо-карману',l1:false};
 
-  // ── Выбор лучшего кандидата (есть слом → приоритет, далее число подтверждений) ──
+  // Выбор лучшего: приоритет слому/сильной реакции/числу подтверждений, штраф за «несвежесть»
   let best=null,bestE=null,bestScore=-1;
-  for(const c of cands){
-    const e=evalSetup(sym,c.dir,c.zone,ind,sr);
-    const score=(e.tStruct?100:0)+e.trigCount*10+(c.w||0);
-    if(score>bestScore){bestScore=score;best=c;bestE=e;}
-  }
+  for(const c of cands){const e=evalSetup(sym,c.dir,c.zone,ind,sr);
+    const score=(e.tStruct?100:0)+(e.strongReaction?60:0)+e.trigCount*10+(c.w||0)-(e.freshDist>prof.freshMax?40:0);
+    if(score>bestScore){bestScore=score;best=c;bestE=e;}}
   const dir=best.dir,isBuy=dir==='Buy',E=bestE;
   const btc=getBTCContext(sym);
   const btcAgainst=(isBuy&&btc.bearish)||(!isBuy&&btc.bullish);
   const btcWarn=btcAgainst?(isBuy?btc.msgBuy:btc.msgSell):'';
 
-  const struct={mode:best.mode,zoneLabel:best.label,h4:best.h4align===true,m30:E.m30shift,struct:E.structBreak,fib:E.tFib,sr:E.react.type,liq:E.tLiq,candle:E.tCandle};
+  const struct={mode:best.mode,zoneLabel:best.label,h4:best.h4align===true,m30:E.m30shift,struct:E.structBreak,fib:E.tFib,sr:E.react.type,liq:E.tLiq,candle:E.tCandle,strong:E.strongReaction,fresh:Math.round(E.freshDist*10)/10};
   const zone={price:best.zone,label:best.label,pri:10};
-  const minTrig=(STRICT==='soft')?2:(STRICT==='strict')?4:3;
-  const ready=E.tStruct&&E.trigCount>=minTrig;
 
-  if(!ready){
+  const zoneStrong=best.extreme?true:best.liq?E.tLiq:best.trend?((best.touches>=prof.minTouch)||E.tFib):(best.touches>=prof.minTouch);
+  const strongOK=prof.needStrong?E.strongReaction:true;
+  const structOK=prof.needStruct?E.tStruct:true;
+  const enoughTrig=E.trigCount>=prof.minTrig;
+  const anyTrigger=E.tStruct||E.tSR||E.tFib||E.tLiq;
+  const qualityReady=zoneStrong&&strongOK&&structOK&&enoughTrig&&anyTrigger;
+
+  if(!qualityReady){
     const need=[];
-    if(!E.tStruct)need.push('слом M5/M15');
-    if(E.tStruct&&E.trigCount<minTrig)need.push(`подтверждений ${E.trigCount}/${minTrig}`);
+    if(!zoneStrong)need.push(`зона слабее ${prof.minTouch} касаний`);
+    if(prof.needStrong&&!E.strongReaction)need.push('сильная реакция (свип/паттерн)');
+    if(prof.needStruct&&!E.tStruct)need.push('слом M5/M15');
+    if(!enoughTrig)need.push(`подтверждений ${E.trigCount}/${prof.minTrig}`);
+    if(!need.length)need.push('реакция у зоны');
     const head=best.mode==='trend'?`Вход по тренду ${isBuy?'↑':'↓'} (${best.label})`:`Разворот ${isBuy?'вверх ↑':'вниз ↓'} у зоны (${best.label})`;
     return{decision:'wait_confirm',dir,zone,mode:best.mode,
       reason:`${head}${E.m30shift?' · M30 смещается':''}${E.tFib?' · Фибо-карман':''}${E.tSR?' · '+srWord(E.react):''} — ждём: ${need.join(', ')}${btcWarn?' · '+btcWarn:''}`,
-      l1:true,l2:E.m30shift,btcWarn,struct,fib:E.fib,react:E.react,sr,liq,trigCount:E.trigCount,minTrig};
+      l1:true,l2:E.m30shift,btcWarn,struct,fib:E.fib,react:E.react,sr,liq,trigCount:E.trigCount,minTrig:prof.minTrig};
   }
 
-  // ── Уровни: SL у ЛОКАЛЬНОГО свинга M5/M15 (тесный!), TP по R-кратности ──
+  // ── ФИЛЬТР СВЕЖЕСТИ: вход только пока цена близко к зоне (самое начало движения) ──
+  if(E.freshDist>prof.freshMax*2)
+    return{decision:'too_late',dir,zone,reason:`Цена уже далеко от зоны (${struct.fresh} ATR) — момент упущен, ждём новый подход к уровню`,l1:true,l2:true,struct,progress:90};
+  if(E.freshDist>prof.freshMax)
+    return{decision:'getting_late',dir,zone,reason:`Цена ушла от зоны на ${struct.fresh} ATR — поздновато для свежего входа, лучше дождаться ретеста`,l1:true,l2:true,struct,progress:70};
+
+  // ── Уровни: тесный SL у локального свинга, TP по R-кратности ──
   const entry=price;let sl;
-  if(isBuy){
-    let base=swingLow(m5.length>=8?m5:m15,6);if(base==null)base=best.zone;
-    if(E.react&&E.react.sweep&&E.react.fakeLevel!=null)base=Math.min(base,E.react.fakeLevel);
-    sl=base-atr*0.3;if(sl>=entry)sl=entry-atr;
-  }else{
-    let base=swingHigh(m5.length>=8?m5:m15,6);if(base==null)base=best.zone;
-    if(E.react&&E.react.sweep&&E.react.fakeLevel!=null)base=Math.max(base,E.react.fakeLevel);
-    sl=base+atr*0.3;if(sl<=entry)sl=entry+atr;
-  }
-  const risk=Math.abs(entry-sl);
-  let tp1,tp2,tp3;
-  if(isBuy){tp1=entry+risk*1.8;tp2=entry+risk*3.0;tp3=entry+risk*5.0;if(sr.resistance.length){const r=sr.resistance[sr.resistance.length-1].price;if(r>tp1)tp3=Math.max(tp3,r);}}
-  else{tp1=entry-risk*1.8;tp2=entry-risk*3.0;tp3=entry-risk*5.0;if(sr.support.length){const s=sr.support[sr.support.length-1].price;if(s<tp1)tp3=Math.min(tp3,s);}}
+  if(isBuy){let b=swingLow(m5.length>=8?m5:m15,6);if(b==null)b=best.zone;if(E.react&&E.react.sweep&&E.react.fakeLevel!=null)b=Math.min(b,E.react.fakeLevel);sl=b-atr*0.3;if(sl>=entry)sl=entry-atr;}
+  else{let b=swingHigh(m5.length>=8?m5:m15,6);if(b==null)b=best.zone;if(E.react&&E.react.sweep&&E.react.fakeLevel!=null)b=Math.max(b,E.react.fakeLevel);sl=b+atr*0.3;if(sl<=entry)sl=entry+atr;}
+  const risk=Math.abs(entry-sl);let tp1,tp2,tp3;
+  if(isBuy){tp1=entry+risk*1.8;tp2=entry+risk*3.0;tp3=entry+risk*5.0;}else{tp1=entry-risk*1.8;tp2=entry-risk*3.0;tp3=entry-risk*5.0;}
   const rr=risk>0?Math.abs(tp1-entry)/risk:0;
   if(rr<1.5)return{decision:'bad_rr',dir,zone,reason:`R:R 1:${rr.toFixed(1)} — риск не оправдан`,l1:true,l2:true,l3:true,rr:rr.toFixed(1),struct};
 
-  const dist=Math.abs(entry-best.zone),progress=Math.min(100,Math.round(dist/(atr*8)*100));
-  const caution=progress>=65||btcAgainst;
-  const fresh=Math.max(0,100-progress);
-  const stage={relevance:fresh,progress,label:fresh>=60?`🟢 Свежий вход (${fresh}%)`:fresh>=35?`🟡 Развивается (${fresh}%)`:`🟠 Поздновато (${fresh}%)`,color:fresh>=60?'var(--buy)':fresh>=35?'var(--warn)':'#ff8800'};
+  const fresh=Math.max(0,Math.round(100-(E.freshDist/prof.freshMax)*60));
+  const stage={relevance:fresh,progress:100-fresh,label:fresh>=60?`🟢 Самое начало (${fresh}%)`:fresh>=35?`🟡 В движении (${fresh}%)`:`🟠 Поздновато (${fresh}%)`,color:fresh>=60?'var(--buy)':fresh>=35?'var(--warn)':'#ff8800'};
+  const caution=btcAgainst;
 
   let conf=2;const items=[best.mode==='trend'?`Тренд ${isBuy?'↑':'↓'}: ${best.label}`:`Разворот у зоны: ${best.label}`];
   if(best.h4align===true){conf++;items.push('H4 подтверждает');}
   if(E.m30shift){conf++;items.push('M30 структура смещается');}
   if(E.tStruct){conf++;items.push('Слом структуры M5/M15');}
   if(E.tFib){conf++;items.push(`Фибо-карман 0.618–0.79 (откат ${E.fib.retrace}%)`);}
-  if(E.tSR){conf++;items.push('Уровень: '+srWord(E.react));}
-  if(E.tLiq){conf++;items.push('Снятие ликвидности');}
-  if(E.tCandle){conf++;items.push('Подтверждающая свеча'+(E.trigPat?'/'+E.trigPat.name:''));}
+  if(E.tLiq){conf++;items.push('Снятие ликвидности (свип)');}
+  if(E.strongPat){conf++;items.push('Паттерн: '+E.strongPat.name);}
+  else if(E.tSR){conf++;items.push('Уровень: '+srWord(E.react));}
   const strength={label:'Подтверждений: '+conf,pct:Math.min(100,conf*11),strong:conf>=6};
 
-  return{decision:'enter',dir,zone,mode:best.mode,entry,tp1,tp2,tp3,sl,rr:rr.toFixed(1),conf,items,caution,btcWarn,struct,fib:E.fib,react:E.react,sr,liq,stage,strength,progress,trigCount:E.trigCount,minTrig};
+  return{decision:'enter',dir,zone,mode:best.mode,entry,tp1,tp2,tp3,sl,rr:rr.toFixed(1),conf,items,caution,btcWarn,struct,fib:E.fib,react:E.react,sr,liq,stage,strength,progress:100-fresh,trigCount:E.trigCount,minTrig:prof.minTrig};
 }
 
 </script>
@@ -976,6 +987,8 @@ function updateMasterFilter(){
     {ok:st.sr&&st.sr!=='none',t:`Реакция на уровне: ${srTxt}`},
     {ok:!!st.liq,t:`Снятие ликвидности: ${st.liq?'да':'нет'}`},
     {ok:!!st.candle,t:`Подтверждающая свеча: ${st.candle?'да':'нет'}`},
+    {ok:!!st.strong,t:`Сила реакции: ${st.strong?'сильная (свип/паттерн)':'обычная'}`},
+    {ok:st.fresh!=null&&st.fresh<=1.6,t:`Свежесть (от зоны): ${st.fresh!=null?st.fresh+' ATR':'—'}`},
     {ok:H.decision==='enter',t:`ИТОГ — ТВХ ${H.trigCount!=null?'('+H.trigCount+'/'+H.minTrig+')':''}: ${H.decision==='enter'?'ГОТОВ ✅':'ждём'}`},
   ];
   document.getElementById('mf-box').innerHTML=rows.map(x=>`<div class="mf-row"><span class="mf-ico">${x.ok?'✅':'⏳'}</span><span>${x.t}</span></div>`).join('');
@@ -1351,7 +1364,7 @@ async function scanAllPairs(){
   scanBusy=true;
   try{
     // Обновляем свечи по кругу батчами, чтобы данные всех пар не застывали
-    const batch=5,refresh=[];
+    const batch=7,refresh=[];
     for(let i=0;i<batch;i++)refresh.push(ALL_SYMS[(scanIdx+i)%ALL_SYMS.length]);
     scanIdx=(scanIdx+batch)%ALL_SYMS.length;
     try{await fetchKline('BTCUSDT','60',60);}catch(e){}
@@ -1415,7 +1428,7 @@ function startApp(user){
   setInterval(updateGoldSpread,5000);
   setInterval(()=>{updateSignalBlock();updateMTF();},10000);
   setInterval(runAll,15000);
-  setInterval(scanAllPairs,20000);   // ФОНОВЫЙ СКАНЕР всех 27 пар
+  setInterval(scanAllPairs,15000);   // ФОНОВЫЙ СКАНЕР всех 27 пар
   // Свечи: H1/M30 каждые 2 мин, H4/M15 каждые 5 мин
   setInterval(()=>{fetchKline(curSym,'60',60);fetchKline(curSym,'30',30);fetchKline('BTCUSDT','60',60);},120000);
   setInterval(()=>{fetchKline(curSym,'15',15);fetchKline(curSym,'240',240);},300000);
