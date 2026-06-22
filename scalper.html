@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<meta name="theme-color" content="#0a0e17">
+<title>WhaleScope M1 SCALPER — Ловец импульса · Bybit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0e17;--bg2:#0d1320;--p1:#111827;--p2:#0f1623;
+  --b1:#1f2937;--b2:#2a3548;--border:#1a2030;
+  --text:#e8edf5;--m1:#9aa7bd;--m2:#6b7689;
+  --buy:#00e676;--sell:#ff1744;--warn:#ffab00;--accent:#2979ff;
+  --gold:#ffc107;--font:'Inter',sans-serif;--mono:'JetBrains Mono',monospace;--logo:'Orbitron',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.num-lg{font-family:var(--mono);font-size:18px;font-weight:600}
+.num-xl{font-family:var(--mono);font-size:24px;font-weight:700}
+#app{max-width:1600px;margin:0 auto;padding:12px}
+
+/* Заголовок */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:10px 4px;flex-wrap:wrap;gap:10px}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.logo-ico{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#1565c0,#42a5f5);display:flex;align-items:center;justify-content:center;font-size:24px}
+.logo-txt{font-family:var(--logo);font-size:22px;font-weight:800;letter-spacing:3px;background:linear-gradient(90deg,#fff,#90caf9);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.logo-sub{font-family:var(--mono);font-size:9px;color:var(--m2);letter-spacing:2px}
+.hdr-right{display:flex;align-items:center;gap:10px}
+.badge{padding:7px 14px;border-radius:20px;font-family:var(--mono);font-size:11px;font-weight:600;display:flex;align-items:center;gap:6px}
+.badge-key{background:rgba(0,230,118,0.08);border:1px solid rgba(0,230,118,0.3);color:var(--buy)}
+.badge-live{background:rgba(0,230,118,0.06);border:1px solid var(--buy);color:var(--buy)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--buy);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+
+/* Сетка пар */
+.section-title{font-family:var(--mono);font-size:11px;color:var(--m1);letter-spacing:1px;margin:16px 4px 10px;text-transform:uppercase}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+@media(max-width:1200px){.grid{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:768px){.grid{grid-template-columns:repeat(2,1fr)}}
+.pc{background:var(--p1);border:1px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;transition:all .15s;position:relative;overflow:hidden}
+.pc:hover{border-color:var(--b2);transform:translateY(-1px)}
+.pc.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.pc.signal-enter{border-color:var(--buy)!important;box-shadow:0 0 0 1px var(--buy),0 0 14px rgba(0,230,118,0.45);animation:sigpulse 1.6s infinite}
+@keyframes sigpulse{0%,100%{box-shadow:0 0 0 1px var(--buy),0 0 8px rgba(0,230,118,0.35)}50%{box-shadow:0 0 0 1px var(--buy),0 0 18px rgba(0,230,118,0.6)}}
+.pc-sig{position:absolute;top:7px;right:9px;font-size:14px;line-height:1}
+.pc-top{display:flex;align-items:center;gap:7px;margin-bottom:2px}
+.pc-ico{font-size:15px}
+.pc-name{font-weight:700;font-size:13px}
+.pc-grp{font-family:var(--mono);font-size:9px;color:var(--m2)}
+.pc-price{font-family:var(--mono);font-size:17px;font-weight:600;margin-top:8px;text-align:right}
+.pc-chg{font-family:var(--mono);font-size:11px;text-align:right;margin-top:2px}
+.pc-chg.up{color:var(--buy)}.pc-chg.dn{color:var(--sell)}
+@keyframes flashB{0%{background:rgba(0,230,118,0.12)}100%{background:transparent}}
+@keyframes flashS{0%{background:rgba(255,23,68,0.12)}100%{background:transparent}}
+.flash-buy{animation:flashB .6s}.flash-sell{animation:flashS .6s}
+
+/* Карточки/блоки */
+.card{background:var(--p1);border:1px solid var(--border);border-radius:14px;padding:16px}
+.mb12{margin-bottom:12px}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.card-hdr h4{font-family:var(--mono);font-size:12px;color:var(--m1);letter-spacing:1px;font-weight:600}
+
+/* График */
+#chart-wrap{position:relative;background:var(--p2);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+#chart-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+#chart-sym{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--text)}
+canvas{display:block;width:100%}
+
+/* Итоговый сигнал */
+#signal-box{border:1px solid var(--border);border-radius:16px;overflow:hidden;transition:all .3s}
+#sig-dir-box{padding:32px 20px;text-align:center;transition:all .3s}
+#sig-icon{font-size:38px;margin-bottom:8px}
+#sig-title{font-size:26px;font-weight:800;letter-spacing:1px;margin-bottom:6px}
+#sig-sub{font-family:var(--mono);font-size:12px;line-height:1.6}
+.sig-levels{padding:18px 20px;border-top:1px solid var(--border)}
+.lvl-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border)}
+.lvl-row:last-child{border-bottom:none}
+.lvl-lbl{font-family:var(--mono);font-size:12px;color:var(--m1)}
+.lvl-src{font-family:var(--mono);font-size:9px;color:var(--m2);margin-top:2px}
+.lvl-val{font-family:var(--mono);font-size:18px;font-weight:600;text-align:right}
+.entry-big{font-family:var(--mono);font-size:26px;font-weight:700}
+#sig-advice{margin:14px 20px;padding:12px 14px;border-radius:10px;font-size:12px;line-height:1.5;background:rgba(41,121,255,0.06);border:1px solid rgba(41,121,255,0.2);color:var(--accent)}
+.prog-wrap{padding:0 20px 16px}
+.prog-bar-bg{height:6px;background:var(--b1);border-radius:3px;overflow:hidden;margin-top:8px}
+#sig-prog-bar{height:100%;border-radius:3px;transition:all .4s}
+
+/* Подробный анализ (кухня) */
+#kitchen-toggle{cursor:pointer;background:var(--p2);border:1px solid var(--b2);border-radius:10px;padding:13px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;transition:all .2s}
+#kitchen-toggle:hover{border-color:var(--accent)}
+#kitchen-arrow{font-size:14px;color:var(--m2);transition:transform .3s}
+
+/* Индикаторы/таблицы */
+.ind-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px}
+.ind-cell{background:var(--p2);border:1px solid var(--border);border-radius:9px;padding:10px}
+.ind-name{font-family:var(--mono);font-size:10px;color:var(--m2);margin-bottom:4px}
+.ind-val{font-family:var(--mono);font-size:13px;font-weight:600}
+.mf-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;background:var(--p2);margin-bottom:6px;font-size:12px}
+.mf-ico{font-size:14px}
+.calc-wrap{background:rgba(255,171,0,0.04);border:1px solid rgba(255,171,0,0.2);border-radius:12px;padding:14px 16px}
+.calc-title{font-family:var(--mono);font-size:11px;color:var(--warn);letter-spacing:1px;margin-bottom:12px}
+.calc-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px}
+.calc-row label{font-size:12px;color:var(--m1)}
+.calc-row input{background:var(--p1);border:1px solid var(--b2);border-radius:7px;padding:7px 10px;color:var(--text);font-family:var(--mono);font-size:13px;width:120px;text-align:right}
+.calc-note{font-size:11px;color:var(--m2);margin-top:8px;line-height:1.4}
+.spread-box{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.spread-cell{background:var(--p2);border:1px solid var(--border);border-radius:10px;padding:12px}
+.feed-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px}
+
+/* Активация */
+#gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000}
+.gate-card{background:var(--p1);border:1px solid var(--border);border-radius:18px;padding:40px;width:360px;text-align:center}
+.gate-logo{font-size:40px;margin-bottom:16px}
+.gate-title{font-family:var(--logo);font-size:24px;font-weight:800;letter-spacing:3px;margin-bottom:6px}
+.gate-sub{font-family:var(--mono);font-size:10px;color:var(--m2);letter-spacing:2px;margin-bottom:24px}
+#gate-input{width:100%;background:var(--bg2);border:1px solid var(--b2);border-radius:10px;padding:14px;color:var(--text);font-family:var(--mono);font-size:15px;text-align:center;letter-spacing:3px;margin-bottom:14px}
+#gate-btn{width:100%;background:var(--accent);border:none;border-radius:10px;padding:14px;color:#fff;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s}
+#gate-btn:hover{background:#1565c0}
+#gate-msg{margin-top:14px;padding:12px;border-radius:8px;font-family:var(--mono);font-size:11px;display:none}
+.gate-hint{font-family:var(--mono);font-size:10px;color:var(--m2);margin-top:18px;line-height:1.6}
+
+/* === Новые контролы: выбор пары, горизонт, активная пара === */
+.ctrl{background:var(--p1);border:1px solid var(--b2);border-radius:20px;padding:7px 12px;color:var(--text);font-family:var(--mono);font-size:11px;cursor:pointer}
+.ctrl:hover{border-color:var(--accent)}
+#active-bar{display:flex;align-items:center;gap:10px;background:var(--p2);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin:4px 4px 12px}
+#active-ico{font-size:20px}
+#active-name{font-family:var(--logo);font-size:18px;font-weight:800;letter-spacing:1px}
+#active-sub{font-family:var(--mono);font-size:10px;color:var(--m2)}
+.hdr-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+@media(max-width:768px){.logo-txt{font-size:18px}.hdr-controls{gap:6px}.ctrl{padding:6px 9px;font-size:10px}}
+</style>
+
+</head>
+<body>
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-logo">⚡</div>
+    <div class="gate-title">WHALESCOPE</div>
+    <div class="gate-sub">M1 SCALPER · ЛОВЕЦ ИМПУЛЬСА · Bybit</div>
+    <input id="gate-input" placeholder="CT-XXXXXX-XXX" autocomplete="off">
+    <button id="gate-btn" onclick="checkKey()">АКТИВИРОВАТЬ</button>
+    <div id="gate-msg"></div>
+    <div class="gate-hint">Скальпинг M1 · вход в начале импульса<br>Стоп обязателен в каждой сделке</div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <div class="hdr">
+    <div class="hdr-left">
+      <div class="logo-ico">⚡</div>
+      <div>
+        <div class="logo-txt">WHALESCOPE</div>
+        <div class="logo-sub">M1 SCALPER · ЛОВЕЦ ИМПУЛЬСА · BYBIT LIVE</div>
+      </div>
+    </div>
+    <div class="hdr-controls">
+      <select id="pair-select" class="ctrl" onchange="setSym(this.value)" title="Активная пара"></select>
+      <select id="mode-sel" class="ctrl" onchange="setMode(this.value)" title="Чувствительность ловца импульса">
+        <option value="early">🚀 Ранний</option>
+        <option value="balanced" selected>⚖️ Сбалансированный</option>
+        <option value="careful">🛡️ Осторожный</option>
+      </select>
+      <div class="badge badge-key" id="notify-badge" onclick="toggleNotify()" style="cursor:pointer" title="Звук и уведомление при импульсе">🔔 Сигнал вкл</div>
+      <div class="badge badge-key">🔑 <span id="hdr-user">—</span></div>
+      <div class="badge badge-live"><span class="dot"></span> LIVE <span id="clock" class="num" style="margin-left:4px">—</span></div>
+    </div>
+  </div>
+
+  <div id="active-bar">
+    <span id="active-ico">🥇</span>
+    <div>
+      <span id="active-name">GOLD</span>
+      <span id="active-price" class="num" style="margin-left:10px;font-size:15px">—</span>
+      <span id="active-chg" class="num" style="margin-left:6px;font-size:12px">—</span>
+      <div id="active-sub">XAUUSDT · M1 · ловец импульса</div>
+    </div>
+  </div>
+
+  <div class="section-title">⚡ Ловец импульса · сигнал входа</div>
+  <div id="signal-box" class="mb12">
+    <div class="card-hdr" style="padding:14px 18px 0"><h4>СИГНАЛ ВХОДА В ИМПУЛЬС</h4><span id="sig-updated" class="num" style="font-size:10px;color:var(--m2)">—</span></div>
+    <div id="sig-dir-box">
+      <div id="sig-icon">⏳</div>
+      <div id="sig-title">ЗАГРУЗКА</div>
+      <div id="sig-sub">Получаем данные M1...</div>
+    </div>
+    <div class="prog-wrap">
+      <div style="display:flex;justify-content:space-between;align-items:flex-end">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--m1)">📍 ТВХ (ВХОД В ИМПУЛЬС)</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--m1)">СИЛА ИМПУЛЬСА</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:4px">
+        <div class="entry-big" id="sig-entry" style="color:var(--warn)">—</div>
+        <div class="num-lg" id="sig-prog-num" style="color:var(--m2)">—</div>
+      </div>
+      <div class="prog-bar-bg"><div id="sig-prog-bar" style="width:0%"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px">
+        <span id="sig-prog-label" style="font-family:var(--mono);font-size:10px;color:var(--m2)">—</span>
+        <span id="sig-aktual" style="font-family:var(--mono);font-size:10px;color:var(--m2)">—</span>
+      </div>
+    </div>
+    <div class="sig-levels">
+      <div class="lvl-row"><div><div class="lvl-lbl">✅ Take profit 1</div><div class="lvl-src">Быстрая цель 1.5R</div></div><div class="lvl-val" id="sig-tp1" style="color:var(--buy)">—</div></div>
+      <div class="lvl-row"><div><div class="lvl-lbl">✅ Take profit 2</div><div class="lvl-src">2.5R</div></div><div class="lvl-val" id="sig-tp2" style="color:var(--buy)">—</div></div>
+      <div class="lvl-row"><div><div class="lvl-lbl">✅ Take profit 3</div><div class="lvl-src">4R</div></div><div class="lvl-val" id="sig-tp3" style="color:var(--buy)">—</div></div>
+      <div class="lvl-row"><div><div class="lvl-lbl">❗ Stop loss (ОБЯЗАТЕЛЕН)</div><div class="lvl-src">За базой импульса</div></div><div class="lvl-val" id="sig-sl" style="color:var(--sell)">—</div></div>
+      <div class="lvl-row"><div class="lvl-lbl">⚖️ R:R соотношение</div><div class="lvl-val" id="sig-rr">—</div></div>
+      <div class="lvl-row"><div class="lvl-lbl">🔥 Свежесть импульса</div><div class="num-lg" id="sig-stage" style="color:var(--m2)">—</div></div>
+    </div>
+    <div id="sig-advice">💡 —</div>
+    <div style="padding:0 18px 16px"><div id="sig-tech" style="padding:8px 12px;border-radius:8px;background:var(--p2);border:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--m2)">—</div></div>
+  </div>
+
+  <div id="chart-wrap">
+    <div id="chart-hdr">
+      <div id="chart-sym">— · M1</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--m2)">Порог $</span>
+        <input id="thresh-input" value="30000" style="background:var(--p1);border:1px solid var(--b2);border-radius:6px;padding:4px 8px;color:var(--text);font-family:var(--mono);font-size:11px;width:70px;text-align:right">
+      </div>
+    </div>
+    <canvas id="chart" height="280"></canvas>
+    <canvas id="stoch" height="70" style="margin-top:6px"></canvas>
+  </div>
+
+  <div id="kitchen-toggle" onclick="toggleKitchen()">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">🔬</span>
+      <div>
+        <div style="font-size:13px;font-weight:700">Разбор импульса</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--m2)">Тело свечи · Объём · Закрытие · Пробой · Свежесть · Калькулятор</div>
+      </div>
+    </div>
+    <span id="kitchen-arrow">▼</span>
+  </div>
+  <div id="kitchen-content" style="display:none">
+    <div class="section-title">⚡ Разбор импульса: настоящий «лифт» или ложный?</div>
+    <div class="card mb12" id="mf-box"></div>
+    <div class="section-title">🔭 Направление (M15 · M5 · M1)</div>
+    <div class="card mb12" id="mtf-box"></div>
+    <div class="section-title">📊 Индикаторы M1</div>
+    <div class="card mb12"><div class="ind-grid" id="ind-box"></div></div>
+    <div class="section-title">💰 Калькулятор позиции</div>
+    <div class="card mb12">
+      <div class="calc-wrap">
+        <div class="calc-title">💰 КАЛЬКУЛЯТОР · РИСК НА СКАЛЬП</div>
+        <div class="calc-row"><label>Депозит ($)</label><input id="calc-dep" value="1000" oninput="calcPos()"></div>
+        <div class="calc-row"><label>Риск (% на сделку)</label><input id="calc-risk" value="1" oninput="calcPos()"></div>
+        <div class="calc-row"><label>Размер позиции ($)</label><div class="num" id="calc-size" style="color:var(--warn);font-size:15px">—</div></div>
+        <div class="calc-row"><label>Плечо (макс)</label><div class="num" id="calc-lev" style="color:var(--accent);font-size:15px">—</div></div>
+        <div class="calc-note">⚠️ Скальпинг — высокий риск. На сделку рискуй малым % (0.5–1%). SL ставь всегда.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">🐋 Крупные сделки (активная пара)</div>
+  <div class="card mb12">
+    <div class="card-hdr"><h4>ПОТОК СДЕЛОК · ОБЪЁМ</h4></div>
+    <div id="feed-box" style="max-height:200px;overflow-y:auto"><div style="text-align:center;color:var(--m2);padding:20px;font-family:var(--mono);font-size:11px">Ожидаем крупные сделки...</div></div>
+  </div>
+
+  <div class="section-title">📡 12 пар · маяки импульса (клик — переключить)</div>
+  <div class="grid" id="pair-grid"></div>
+</div>
+<script>
+'use strict';
+// ════════ 12 ПАР СКАЛЬПЕРА ════════
+const ALL_SYMS=['XAUUSDT','XAGUSDT','BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','DOGEUSDT','SUIUSDT','HYPEUSDT','TAOUSDT','WLDUSDT','ENAUSDT'];
+const SYM_NAME={XAUUSDT:'GOLD',XAGUSDT:'SILVER',BTCUSDT:'BTC',ETHUSDT:'ETH',SOLUSDT:'SOL',BNBUSDT:'BNB',DOGEUSDT:'DOGE',SUIUSDT:'SUI',HYPEUSDT:'HYPE',TAOUSDT:'TAO',WLDUSDT:'WLD',ENAUSDT:'ENA'};
+const SYM_ICO={XAUUSDT:'🥇',XAGUSDT:'🥈',BTCUSDT:'₿',ETHUSDT:'Ξ',SOLUSDT:'◎',BNBUSDT:'🅑',DOGEUSDT:'Ð',SUIUSDT:'🌊',HYPEUSDT:'🔷',TAOUSDT:'🧠',WLDUSDT:'🌐',ENAUSDT:'⬡'};
+const SYM_COLOR={XAUUSDT:'#ffc107',XAGUSDT:'#b0bec5',BTCUSDT:'#f7931a',ETHUSDT:'#7986cb',SOLUSDT:'#ab47bc',BNBUSDT:'#f0b90b',DOGEUSDT:'#c8a000',SUIUSDT:'#4da2ff',HYPEUSDT:'#9c27b0',TAOUSDT:'#00e5ff',WLDUSDT:'#26a69a',ENAUSDT:'#ff7043'};
+function dpFor(sym){if(sym==='BTCUSDT')return 0;if(['DOGEUSDT','WLDUSDT','ENAUSDT'].includes(sym))return 5;if(['SUIUSDT','HYPEUSDT'].includes(sym))return 4;if(sym==='XAGUSDT')return 3;return 2;}
+function fmtP(sym,v){if(v==null||isNaN(v))return '—';return '$'+Number(v).toLocaleString('en-US',{minimumFractionDigits:dpFor(sym),maximumFractionDigits:dpFor(sym)});}
+
+// ════════ СОСТОЯНИЕ ════════
+function mkState(){return{price:0,prevPrice:0,prices:[],candles:{1:[],5:[],15:[]},live:null,liveMin:0};}
+const ST={};ALL_SYMS.forEach(s=>ST[s]=mkState());
+let curSym='XAUUSDT',MODE='balanced';
+try{const m=localStorage.getItem('ws_scalp_mode');if(m)MODE=m;}catch(e){}
+const $=(id,txt)=>{const e=document.getElementById(id);if(e&&txt!==undefined)e.textContent=txt;return e;};
+const $c=(id,col)=>{const e=document.getElementById(id);if(e)e.style.color=col;};
+
+// ════════ МАТЕМАТИКА ════════
+function sma(a,n){if(!a||!a.length)return null;const s=a.slice(-n);return s.reduce((x,y)=>x+y,0)/s.length;}
+function ema(a,n){if(!a||!a.length)return null;const k=2/(n+1);let e=a[0];for(let i=1;i<a.length;i++)e=a[i]*k+e*(1-k);return e;}
+function calcRSI(a,n){n=n||14;if(!a||a.length<n+1)return 50;let g=0,l=0;for(let i=a.length-n;i<a.length;i++){const d=a[i]-a[i-1];if(d>=0)g+=d;else l-=d;}if(l===0)return 100;return 100-100/(1+(g/n)/(l/n));}
+function calcStochRSI(a){if(!a||a.length<20)return null;const r=[];for(let i=14;i<a.length;i++)r.push(calcRSI(a.slice(0,i+1),14));if(r.length<14)return null;const k=[];for(let i=13;i<r.length;i++){const w=r.slice(i-13,i+1),mn=Math.min(...w),mx=Math.max(...w);k.push(mx===mn?50:(r[i]-mn)/(mx-mn)*100);}if(!k.length)return null;return{K:Math.round(k[k.length-1]*10)/10,D:Math.round(sma(k,3)*10)/10,zone:k[k.length-1]<20?'oversold':k[k.length-1]>80?'overbought':'mid'};}
+function calcATR(c,n){n=n||14;if(!c||c.length<2)return 0;const tr=[];for(let i=1;i<c.length;i++){const a=c[i],p=c[i-1];tr.push(Math.max(a.h-a.l,Math.abs(a.h-p.c),Math.abs(a.l-p.c)));}return sma(tr,n)||0;}
+function avgVol(c){if(!c||!c.length)return 0;return c.reduce((s,x)=>s+(x.v||0),0)/c.length;}
+function detectTrend(sym,tf){const c=ST[sym].candles[tf];if(!c||c.length<6)return 'unknown';const cl=c.map(x=>x.c),e9=ema(cl,9),e21=ema(cl,Math.min(21,cl.length)),r=cl.slice(-6),sl=(r[r.length-1]-r[0])/r[0];if(e9>e21&&sl>0.0005)return 'bull';if(e9<e21&&sl<-0.0005)return 'bear';if(sl>0.0015)return 'bull';if(sl<-0.0015)return 'bear';return 'neutral';}
+function trNm(t){return t==='bull'?'вверх ↑':t==='bear'?'вниз ↓':t==='neutral'?'флэт':'?';}
+
+// ════════ ЖИВАЯ M1-СВЕЧА из потока сделок (для активной пары — реальное время) ════════
+function pushTrade(sym,price,vol){const s=ST[sym];const min=Math.floor(Date.now()/60000);if(s.liveMin!==min){if(s.live){const arr=s.candles[1];arr.push(s.live);if(arr.length>200)arr.shift();}s.live={t:min*60000,o:price,h:price,l:price,c:price,v:vol};s.liveMin=min;}else if(s.live){s.live.h=Math.max(s.live.h,price);s.live.l=Math.min(s.live.l,price);s.live.c=price;s.live.v+=vol;}else{s.live={t:min*60000,o:price,h:price,l:price,c:price,v:vol};s.liveMin=min;}}
+function m1Series(sym,withLive){const s=ST[sym],base=s.candles[1]||[];return (withLive&&s.live)?base.concat([s.live]):base.slice();}
+
+// ════════ ПРОФИЛИ ЛОВЦА ИМПУЛЬСА ════════
+const PROF={
+  early:   {body:1.6,vol:2.0,conv:0.60,breakout:false,aligned:false,label:'Ранний'},
+  balanced:{body:1.9,vol:2.5,conv:0.65,breakout:true, aligned:false,label:'Сбалансированный'},
+  careful: {body:2.2,vol:3.0,conv:0.70,breakout:true, aligned:true, label:'Осторожный'}
+};
+
+// ════════ ДВИЖОК: ЛОВЕЦ ИМПУЛЬСА ════════
+function detectImpulse(sym,opts){
+  const useLive=!opts||opts.live!==false;
+  const cc=m1Series(sym,useLive);
+  if(cc.length<22)return{decision:'loading',reason:'Накапливаем свечи M1...'};
+  const price=ST[sym].price||cc[cc.length-1].c;
+  const atr=calcATR(cc.slice(0,-1),14)||price*0.001;
+  const cur=cc[cc.length-1];                          // текущая (живая) импульсная свеча
+  const up=cur.c>=cur.o, body=Math.abs(cur.c-cur.o), range=(cur.h-cur.l)||atr;
+  const prior20=cc.slice(-22,-1);
+  const aV=avgVol(prior20)||1;
+  const volSpike=cur.v/aV;
+  const bodyRatio=body/atr;
+  const conviction=up?(cur.c-cur.l)/range:(cur.h-cur.c)/range;   // закрытие у экстремума = сильно
+  const prior=cc.slice(-16,-1),hi=Math.max(...prior.map(x=>x.h)),lo=Math.min(...prior.map(x=>x.l));
+  const breakout=up?cur.c>hi:cur.c<lo;
+  // свежесть: сколько подряд крупных свечей в ту же сторону уже было ДО текущей
+  let ext=0;for(let i=cc.length-2;i>=0;i--){const x=cc[i],b=Math.abs(x.c-x.o);if(((x.c>=x.o)===up)&&b>atr*1.1)ext++;else break;}
+  const m15=detectTrend(sym,15),m5=detectTrend(sym,5);
+  const aligned=up?(m15!=='bear'):(m15!=='bull');
+  const fresh=ext<=1;                                   // только 1-я/2-я свеча импульса
+  const prof=PROF[MODE]||PROF.balanced;
+
+  const cBody=bodyRatio>=prof.body, cVol=volSpike>=prof.vol, cConv=conviction>=prof.conv, cBrk=prof.breakout?breakout:true, cAln=prof.aligned?aligned:true;
+  const fire=cBody&&cVol&&cConv&&cBrk&&cAln&&fresh;
+  const dir=up?'Buy':'Sell',isBuy=up;
+  const sev={bodyRatio:Math.round(bodyRatio*10)/10,volSpike:Math.round(volSpike*10)/10,conviction:Math.round(conviction*100),breakout,aligned,ext,m15,m5};
+  // сила импульса 0..100
+  const strength=Math.min(100,Math.round((Math.min(bodyRatio/2.5,1)*40)+(Math.min(volSpike/4,1)*40)+(conviction*20)));
+
+  if(fire){
+    const entry=price;let sl,tp1,tp2,tp3;
+    if(isBuy){sl=cur.l-atr*0.3;if(sl>=entry)sl=entry-atr;const r=entry-sl;tp1=entry+r*1.5;tp2=entry+r*2.5;tp3=entry+r*4;}
+    else{sl=cur.h+atr*0.3;if(sl<=entry)sl=entry+atr;const r=sl-entry;tp1=entry-r*1.5;tp2=entry-r*2.5;tp3=entry-r*4;}
+    const risk=Math.abs(entry-sl),rr=risk>0?Math.abs(tp1-entry)/risk:0;
+    if(rr<1.3)return{decision:'wait',dir,reason:'Импульс есть, но стоп слишком широкий (R:R мал) — пропускаем',sev,strength};
+    const items=[`Импульс ${isBuy?'ВВЕРХ ↑':'ВНИЗ ↓'}`,`Тело ${sev.bodyRatio}× ATR`,`Объём ×${sev.volSpike}`,`Закрытие у ${isBuy?'хая':'лоя'} (${sev.conviction}%)`];
+    if(breakout)items.push('Пробой микро-уровня');
+    if(aligned)items.push('M15 не против');
+    return{decision:'enter',dir,entry,sl,tp1,tp2,tp3,rr:rr.toFixed(1),items,sev,strength,fresh:sev.ext===0?'🟢 Самое начало':'🟡 2-я свеча'};
+  }
+  // импульс зреет?
+  const building=(bodyRatio>=prof.body*0.7&&volSpike>=prof.vol*0.7)||(volSpike>=prof.vol&&bodyRatio>=prof.body*0.6);
+  if(building&&fresh){
+    const need=[];if(!cBody)need.push(`тело ${sev.bodyRatio}/${prof.body}× ATR`);if(!cVol)need.push(`объём ×${sev.volSpike}/${prof.vol}`);if(!cConv)need.push(`закрытие ${sev.conviction}%/${Math.round(prof.conv*100)}%`);if(prof.breakout&&!breakout)need.push('пробой уровня');if(prof.aligned&&!aligned)need.push('согласие M15');
+    return{decision:'building',dir,reason:`Импульс ${isBuy?'вверх':'вниз'} зреет — ждём: ${need.join(', ')}`,sev,strength};
+  }
+  if(!fresh&&(bodyRatio>=prof.body))return{decision:'late',dir,reason:`Импульс уже идёт ${sev.ext+1} свечу — поздно входить, ждём следующий`,sev,strength};
+  return{decision:'wait',dir:null,reason:'Импульса нет — рынок спокоен, ждём резкого движения с объёмом',sev,strength};
+}
+
+function getInd(sym){const cc=m1Series(sym,true),p=cc.map(x=>x.c);return{price:ST[sym].price,stochRsi:calcStochRSI(p),rsi:calcRSI(p,14),atr:calcATR(cc,14),m15:detectTrend(sym,15),m5:detectTrend(sym,5),m1:detectTrend(sym,1)};}
+
+// ════════ ОТРИСОВКА СИГНАЛА ════════
+function updateSignalBlock(){
+  const sym=curSym,H=detectImpulse(sym),isBuy=H.dir==='Buy',dirCol=isBuy?'var(--buy)':'var(--sell)',dW=H.dir?(isBuy?'BUY':'SELL'):'';
+  $('sig-updated',new Date().toLocaleTimeString('ru-RU'));
+  let icon,title,sub,col,bg,levels=false;
+  switch(H.decision){
+    case 'loading':icon='⏳';title='НАКОПЛЕНИЕ M1';sub=H.reason;col='var(--m2)';bg='var(--p1)';break;
+    case 'enter':icon='🚀';title='ВХОДИТЬ — '+dW;sub='Импульс '+(isBuy?'ВВЕРХ ↑':'ВНИЗ ↓')+' · вход в начале полёта';col=dirCol;bg=isBuy?'rgba(0,230,118,0.08)':'rgba(255,23,68,0.08)';levels=true;break;
+    case 'building':icon='⏰';title='ИМПУЛЬС ЗРЕЕТ — '+dW;sub=H.reason;col='var(--accent)';bg='rgba(41,121,255,0.06)';break;
+    case 'late':icon='🏃';title='ПОЗДНО — '+dW;sub=H.reason;col='var(--warn)';bg='rgba(255,171,0,0.05)';break;
+    default:icon='⏳';title='ЖДЁМ ИМПУЛЬС';sub=H.reason||'Рынок спокоен';col='var(--m2)';bg='var(--p1)';
+  }
+  $('sig-icon',icon);$('sig-title',title);$c('sig-title',col);$('sig-sub',sub);
+  document.getElementById('sig-dir-box').style.background=bg;
+  document.getElementById('signal-box').style.borderColor=col==='var(--m2)'?'var(--border)':col;
+  if(levels){$('sig-entry',fmtP(sym,H.entry));$c('sig-entry',dirCol);$('sig-tp1',fmtP(sym,H.tp1));$('sig-tp2',fmtP(sym,H.tp2));$('sig-tp3',fmtP(sym,H.tp3));$('sig-sl',fmtP(sym,H.sl));$('sig-rr','1:'+H.rr);}
+  else{['sig-entry','sig-tp1','sig-tp2','sig-tp3','sig-sl','sig-rr'].forEach(id=>$(id,'—'));$c('sig-entry','var(--m2)');}
+  const pb=document.getElementById('sig-prog-bar'),s=H.strength||0;pb.style.width=s+'%';pb.style.background=s>=70?'var(--buy)':s>=40?'var(--warn)':'var(--m2)';
+  $('sig-prog-num',s+'%');$c('sig-prog-num',s>=70?'var(--buy)':s>=40?'var(--warn)':'var(--m2)');
+  $('sig-prog-label',H.sev?`тело ${H.sev.bodyRatio}× · об. ×${H.sev.volSpike}`:'—');$('sig-aktual',H.sev?`закр. ${H.sev.conviction}%`:'');
+  $('sig-stage',H.fresh||(H.decision==='late'?'🟠 Поздно':(H.decision==='enter'?'🟢':'—')));$c('sig-stage',H.decision==='enter'?'var(--buy)':'var(--m2)');
+  let adv='💡 ';
+  if(H.decision==='enter')adv+=`Вход ${isBuy?'BUY':'SELL'} в начале импульса: ${H.items.join(' · ')}. SL ОБЯЗАТЕЛЕН ${isBuy?'под базой':'над базой'} (${fmtP(sym,H.sl)})!`;
+  else if(H.decision==='building')adv+=`${H.reason}. Не входи раньше времени — дождись полного импульса.`;
+  else if(H.decision==='late')adv+=`${H.reason}. Вход в конце импульса = вход в чужой выход. Жди следующий.`;
+  else adv+='Импульса нет. Скальпер ждёт резкого движения с объёмом — это нормально, не каждую минуту лифт.';
+  $('sig-advice',adv);
+  const v=H.sev||{},c1=v.bodyRatio>=( PROF[MODE].body)?'✅':'⏳',c2=v.volSpike>=(PROF[MODE].vol)?'✅':'⏳',c3=H.decision==='enter'?'✅':'⏳';
+  $('sig-tech',`Тело: ${c1} · Объём: ${c2} · Вход: ${c3} · режим ${PROF[MODE].label}`);
+  if(H.decision==='enter'&&lastSig[sym]!=='enter')notifyEnter(sym,isBuy);
+  lastSig[sym]=H.decision;
+}
+
+// ════════ ПАНЕЛИ ════════
+function updateMasterFilter(){
+  const sym=curSym,H=detectImpulse(sym),v=H.sev||{},prof=PROF[MODE];
+  const rows=[
+    {ok:H.dir!=null,t:`Направление импульса: ${H.dir?(H.dir==='Buy'?'ВВЕРХ ↑':'ВНИЗ ↓'):'нет'}`},
+    {ok:v.bodyRatio>=prof.body,t:`Большое тело свечи: ${v.bodyRatio||0}× ATR (нужно ${prof.body}×)`},
+    {ok:v.volSpike>=prof.vol,t:`Всплеск объёма: ×${v.volSpike||0} (нужно ×${prof.vol}) — фильтр ложных`},
+    {ok:(v.conviction||0)>=prof.conv*100,t:`Закрытие у экстремума: ${v.conviction||0}% (нужно ${Math.round(prof.conv*100)}%)`},
+    {ok:!prof.breakout||v.breakout,t:`Пробой микро-уровня: ${v.breakout?'да':'нет'}${prof.breakout?'':' (не требуется)'}`},
+    {ok:!prof.aligned||v.aligned,t:`M15 не против входа: ${v.aligned?'да':'против'}${prof.aligned?'':' (не требуется)'}`},
+    {ok:(v.ext!=null&&v.ext<=1),t:`Свежесть: ${v.ext!=null?(v.ext===0?'самое начало':v.ext+' свеча(и) уже прошли'):'—'}`},
+    {ok:H.decision==='enter',t:`ИТОГ — ВХОД В ИМПУЛЬС: ${H.decision==='enter'?'ГОТОВ ✅':H.decision==='building'?'зреет':H.decision==='late'?'поздно':'ждём'}`}
+  ];
+  document.getElementById('mf-box').innerHTML=rows.map(r=>`<div class="mf-row"><span class="mf-ico">${r.ok?'✅':'⏳'}</span><span>${r.t}</span></div>`).join('');
+}
+function updateMTF(){const sym=curSym,tfs=[['M1',1],['M5',5],['M15',15]];document.getElementById('mtf-box').innerHTML='<div class="ind-grid">'+tfs.map(([n,tf])=>{const t=detectTrend(sym,tf),col=t==='bull'?'var(--buy)':t==='bear'?'var(--sell)':'var(--m2)';return `<div class="ind-cell"><div class="ind-name">${n}</div><div class="ind-val" style="color:${col}">${trNm(t)}</div></div>`;}).join('')+'</div>';}
+function updateIndPanel(){const sym=curSym,ind=getInd(sym),cells=[];if(ind.stochRsi)cells.push(['StochRSI',`K:${ind.stochRsi.K} ${ind.stochRsi.zone==='oversold'?'🟢':ind.stochRsi.zone==='overbought'?'🔴':''}`]);cells.push(['RSI(14) M1',ind.rsi.toFixed(0)]);cells.push(['ATR M1',fmtP(sym,ind.atr)]);const cc=m1Series(sym,true),aV=avgVol(cc.slice(-21,-1)),cur=cc[cc.length-1];if(cur&&aV)cells.push(['Объём свечи','×'+(cur.v/aV).toFixed(1)+' от средн.']);cells.push(['Свечей M1',String(cc.length)]);document.getElementById('ind-box').innerHTML=cells.map(([n,v])=>`<div class="ind-cell"><div class="ind-name">${n}</div><div class="ind-val">${v}</div></div>`).join('');}
+function calcPos(){const dep=parseFloat(document.getElementById('calc-dep').value)||0,risk=parseFloat(document.getElementById('calc-risk').value)||0;$('calc-size','$'+(dep*risk/100).toFixed(2)+' риск');const ind=getInd(curSym),px=ST[curSym].price||1,atr=ind.atr||px*0.001,lev=Math.max(1,Math.min(25,Math.round(1.5/(atr/px*100))));$('calc-lev',lev+'x');}
+
+// ════════ ГРАФИК M1 ════════
+function drawChart(){const cv=document.getElementById('chart');if(!cv)return;const ctx=cv.getContext('2d');const W=cv.width=cv.offsetWidth*2,H=cv.height=560;ctx.clearRect(0,0,W,H);const sym=curSym,cc=m1Series(sym,true);if(cc.length<3){ctx.fillStyle='#6b7689';ctx.font='20px monospace';ctx.fillText('Накопление M1...',W/2-120,H/2);return;}const data=cc.slice(-70),mn=Math.min(...data.map(x=>x.l)),mx=Math.max(...data.map(x=>x.h)),rng=(mx-mn)||1,pad=40,bw=(W-2*pad)/data.length;ctx.strokeStyle='rgba(255,255,255,0.04)';for(let i=0;i<=4;i++){const y=pad+(H-2*pad)*i/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke();ctx.fillStyle='#6b7689';ctx.font='18px monospace';ctx.fillText(fmtP(sym,mx-rng*i/4),W-pad-150,y-6);}data.forEach((c,i)=>{const x=pad+bw*i+bw/2,yO=pad+(H-2*pad)*(1-(c.o-mn)/rng),yC=pad+(H-2*pad)*(1-(c.c-mn)/rng),yH=pad+(H-2*pad)*(1-(c.h-mn)/rng),yL=pad+(H-2*pad)*(1-(c.l-mn)/rng),grn=c.c>=c.o;ctx.strokeStyle=grn?'#00e676':'#ff1744';ctx.fillStyle=grn?'#00e676':'#ff1744';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,yH);ctx.lineTo(x,yL);ctx.stroke();ctx.fillRect(x-bw*0.32,Math.min(yO,yC),bw*0.64,Math.max(2,Math.abs(yC-yO)));});const last=data[data.length-1],ly=pad+(H-2*pad)*(1-(last.c-mn)/rng),lc=last.c>=last.o?'#00e676':'#ff1744';ctx.fillStyle=lc;ctx.fillRect(W-pad-2,ly-14,95,28);ctx.fillStyle='#000';ctx.font='bold 17px monospace';ctx.fillText(fmtP(sym,last.c),W-pad+2,ly+5);}
+function drawStoch(){const cv=document.getElementById('stoch');if(!cv)return;const ctx=cv.getContext('2d');const W=cv.width=cv.offsetWidth*2,H=cv.height=140;ctx.clearRect(0,0,W,H);const cc=m1Series(curSym,true),vols=cc.slice(-40).map(x=>x.v||0),mx=Math.max(...vols,1),bw=W/vols.length,aV=avgVol(cc.slice(-21,-1));ctx.fillStyle='#6b7689';ctx.font='15px monospace';ctx.fillText('Объём M1',8,18);vols.forEach((v,i)=>{const h=v/mx*(H-25),spike=aV&&v>=aV*2;ctx.fillStyle=spike?'#ffab00':'rgba(120,134,156,0.5)';ctx.fillRect(i*bw,H-h,bw*0.8,h);});}
+
+// ════════ СЕТКА ════════
+function renderGrid(){document.getElementById('pair-grid').innerHTML=ALL_SYMS.map(sym=>{const col=SYM_COLOR[sym];return `<div class="pc ${sym===curSym?'active':''}" id="pc-${sym}" onclick="setSym('${sym}')"><div class="pc-sig" id="pcs-${sym}"></div><div class="pc-top"><span class="pc-ico">${SYM_ICO[sym]}</span><span class="pc-name" style="color:${col}">${SYM_NAME[sym]}</span></div><div class="pc-grp">${sym==='XAUUSDT'?'Золото':sym==='XAGUSDT'?'Серебро':'Крипто'}</div><div class="pc-price num" id="pcp-${sym}">—</div><div class="pc-chg num" id="pcc-${sym}">—</div></div>`;}).join('');const sel=document.getElementById('pair-select');if(sel)sel.innerHTML=ALL_SYMS.map(s=>`<option value="${s}" ${s===curSym?'selected':''}>${SYM_ICO[s]} ${SYM_NAME[s]}</option>`).join('');}
+function updatePC(sym){const s=ST[sym];if(!s.price)return;const el=document.getElementById('pcp-'+sym);if(el)el.textContent=fmtP(sym,s.price);const ch=document.getElementById('pcc-'+sym);if(ch&&s.candles[15]&&s.candles[15].length>1){const open=s.candles[15][0].c,chg=(s.price-open)/open*100;ch.textContent=(chg>=0?'▲ +':'▼ ')+chg.toFixed(2)+'%';ch.className='pc-chg num '+(chg>=0?'up':'dn');}if(sym===curSym)updateActiveBar();if(s.prevPrice&&s.price!==s.prevPrice){const card=document.getElementById('pc-'+sym);if(card){card.classList.remove('flash-buy','flash-sell');void card.offsetWidth;card.classList.add(s.price>s.prevPrice?'flash-buy':'flash-sell');}}}
+function updateActiveBar(){const s=ST[curSym];$('active-ico',SYM_ICO[curSym]);$('active-name',SYM_NAME[curSym]);$('active-price',fmtP(curSym,s.price));$('active-sub',curSym+' · M1 · ловец импульса');const ch=document.getElementById('active-chg');if(ch&&s.candles[15]&&s.candles[15].length>1){const open=s.candles[15][0].c,chg=(s.price-open)/open*100;ch.textContent=(chg>=0?'▲ +':'▼ ')+chg.toFixed(2)+'%';ch.style.color=chg>=0?'var(--buy)':'var(--sell)';}}
+function setSym(sym){if(!ST[sym])return;curSym=sym;document.querySelectorAll('.pc').forEach(e=>e.classList.remove('active'));const c=document.getElementById('pc-'+sym);if(c)c.classList.add('active');const sel=document.getElementById('pair-select');if(sel)sel.value=sym;$('chart-sym',SYM_NAME[sym]+' · M1');resubscribeTrades(sym);updateActiveBar();loadAllKlines(sym).then(runAll);runAll();window.scrollTo({top:0,behavior:'smooth'});}
+function setMode(v){MODE=v;try{localStorage.setItem('ws_scalp_mode',v);}catch(e){}runAll();}
+
+// ════════ ДАННЫЕ ════════
+async function fetchKline(sym,interval,tfKey){try{const r=await fetch(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${sym}&interval=${interval}&limit=200`);const j=await r.json();if(j.retCode===0&&j.result&&j.result.list){const c=j.result.list.map(k=>({t:+k[0],o:+k[1],h:+k[2],l:+k[3],c:+k[4],v:+k[5]})).reverse();ST[sym].candles[tfKey]=c;if(tfKey===1&&!ST[sym].price)ST[sym].price=c[c.length-1].c;}}catch(e){}}
+async function loadAllKlines(sym){await Promise.all([fetchKline(sym,'1',1),fetchKline(sym,'5',5),fetchKline(sym,'15',15)]);}
+
+let ws=null,curTradeSub='';
+function connectWS(){try{ws=new WebSocket('wss://stream.bybit.com/v5/public/linear');ws.onopen=()=>{ws.send(JSON.stringify({op:'subscribe',args:ALL_SYMS.map(s=>'tickers.'+s)}));curTradeSub='publicTrade.'+curSym;ws.send(JSON.stringify({op:'subscribe',args:[curTradeSub]}));};ws.onmessage=(ev)=>{const d=JSON.parse(ev.data);if(d.topic&&d.topic.startsWith('tickers.')){const sym=d.topic.split('.')[1],t=d.data;if(t&&t.lastPrice&&ST[sym]){ST[sym].prevPrice=ST[sym].price;ST[sym].price=+t.lastPrice;updatePC(sym);}}if(d.topic&&d.topic.startsWith('publicTrade.')){const sym=d.topic.split('.')[1];(d.data||[]).forEach(tr=>{const p=+tr.p,v=+tr.v;pushTrade(sym,p,v);const usd=p*v,thr=parseFloat(document.getElementById('thresh-input').value)||30000;if(usd>=thr)addFeed(tr.S,p,usd);});}};ws.onclose=()=>setTimeout(connectWS,3000);}catch(e){setTimeout(connectWS,3000);}}
+function resubscribeTrades(sym){if(!ws||ws.readyState!==1)return;try{if(curTradeSub)ws.send(JSON.stringify({op:'unsubscribe',args:[curTradeSub]}));curTradeSub='publicTrade.'+sym;ws.send(JSON.stringify({op:'subscribe',args:[curTradeSub]}));}catch(e){}}
+function addFeed(side,price,usd){const box=document.getElementById('feed-box');if(box.children.length===1&&box.textContent.includes('Ожидаем'))box.innerHTML='';const row=document.createElement('div');row.className='feed-row';const b=side==='Buy';row.innerHTML=`<span style="color:${b?'var(--buy)':'var(--sell)'}">${b?'🟢 ПОКУПКА':'🔴 ПРОДАЖА'}</span><span>${fmtP(curSym,price)}</span><span style="color:${b?'var(--buy)':'var(--sell)'}">$${(usd/1000).toFixed(1)}K</span>`;box.insertBefore(row,box.firstChild);while(box.children.length>15)box.removeChild(box.lastChild);}
+
+function runAll(){try{updateActiveBar();updateSignalBlock();updateMasterFilter();updateMTF();updateIndPanel();calcPos();drawChart();drawStoch();}catch(e){console.error('runAll',e);}}
+function toggleKitchen(){const c=document.getElementById('kitchen-content'),a=document.getElementById('kitchen-arrow');if(c.style.display==='none'){c.style.display='block';a.style.transform='rotate(180deg)';}else{c.style.display='none';a.style.transform='rotate(0deg)';}}
+
+// ════════ УВЕДОМЛЕНИЯ ════════
+let NOTIFY=true,lastSig={},audioCtx=null,titleFlash=null;const ORIG_TITLE='WhaleScope M1';
+try{if(localStorage.getItem('ws_notify')==='0')NOTIFY=false;}catch(e){}
+function initAudio(){try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume();}catch(e){}}
+function beepTone(f,d){if(!audioCtx)return;try{const t=audioCtx.currentTime+d,o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.35,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+0.4);o.start(t);o.stop(t+0.45);}catch(e){}}
+function beep(b){initAudio();if(b){beepTone(880,0);beepTone(1320,0.15);}else{beepTone(523,0);beepTone(349,0.15);}}
+function flashTitle(txt){clearInterval(titleFlash);let on=false;titleFlash=setInterval(()=>{document.title=on?ORIG_TITLE:'🚀 '+txt;on=!on;},700);const stop=()=>{clearInterval(titleFlash);document.title=ORIG_TITLE;window.removeEventListener('focus',stop);};window.addEventListener('focus',stop);}
+function notifyEnter(sym,buy){if(!NOTIFY)return;const name=SYM_NAME[sym]||sym,txt=`${name}: ИМПУЛЬС — ${buy?'BUY ↑':'SELL ↓'}`;beep(buy);flashTitle(`${name} ИМПУЛЬС ${buy?'BUY':'SELL'}`);try{if('Notification'in window&&Notification.permission==='granted')new Notification('⚡ WhaleScope M1 — импульс!',{body:txt});}catch(e){}}
+function toggleNotify(){NOTIFY=!NOTIFY;try{localStorage.setItem('ws_notify',NOTIFY?'1':'0');}catch(e){}if(NOTIFY){initAudio();beep(true);if('Notification'in window&&Notification.permission==='default'){try{Notification.requestPermission();}catch(e){}}}const el=document.getElementById('notify-badge');if(el){el.textContent=NOTIFY?'🔔 Сигнал вкл':'🔕 Сигнал выкл';el.style.opacity=NOTIFY?'1':'0.5';}}
+function tick(){$('clock',new Date().toLocaleTimeString('ru-RU'));}
+
+// ════════ ФОНОВЫЙ СКАНЕР (маяки импульса) ════════
+let scanIdx=0,scanReady=false,scanBusy=false;
+function markPairSignal(sym,dec){const card=document.getElementById('pc-'+sym);if(!card)return;card.classList.toggle('signal-enter',dec==='enter');const sig=document.getElementById('pcs-'+sym);if(sig)sig.textContent=dec==='enter'?'🚀':(dec==='building'?'⏰':(dec==='late'?'🏃':''));}
+function notifyMulti(list){if(!NOTIFY)return;beep(list[0].buy);const names=list.map(x=>`${SYM_NAME[x.sym]} ${x.buy?'↑':'↓'}`).join(', ');flashTitle('ИМПУЛЬС: '+names);try{if('Notification'in window&&Notification.permission==='granted')new Notification('⚡ WhaleScope M1 — импульс',{body:names});}catch(e){}}
+function primeSignals(){for(const sym of ALL_SYMS){try{const H=detectImpulse(sym,{live:sym===curSym});lastSig[sym]=H.decision;markPairSignal(sym,H.decision);}catch(e){}}scanReady=true;}
+async function scanAllPairs(){if(!scanReady||scanBusy)return;scanBusy=true;try{const batch=4,refresh=[];for(let i=0;i<batch;i++)refresh.push(ALL_SYMS[(scanIdx+i)%ALL_SYMS.length]);scanIdx=(scanIdx+batch)%ALL_SYMS.length;await Promise.all(refresh.map(s=>fetchKline(s,'1',1).catch(()=>{})));const ne=[];for(const sym of ALL_SYMS){let dec='',buy=false;try{const H=detectImpulse(sym,{live:sym===curSym});dec=H.decision;buy=H.dir==='Buy';}catch(e){continue;}if(dec==='enter'&&lastSig[sym]!=='enter'&&sym!==curSym)ne.push({sym,buy});lastSig[sym]=dec;markPairSignal(sym,dec);}if(ne.length)notifyMulti(ne);}finally{scanBusy=false;}}
+
+// ════════ АКТИВАЦИЯ ════════
+const KEYS={'CT-MEEROVA-001':'Бахыт','CT-DEMO-2024-FREE':'Demo','CT-SCALP-0001':'Клиент 01','CT-SCALP-0002':'Клиент 02','CT-SCALP-0003':'Клиент 03','CT-SCALP-0004':'Клиент 04','CT-SCALP-0005':'Клиент 05','CT-SCALP-0006':'Клиент 06','CT-SCALP-0007':'Клиент 07','CT-SCALP-0008':'Клиент 08','CT-SCALP-0009':'Клиент 09','CT-SCALP-0010':'Клиент 10'};
+function checkKey(){const k=document.getElementById('gate-input').value.trim().toUpperCase(),msg=document.getElementById('gate-msg');if(KEYS[k]){localStorage.setItem('ws_scalp_key',k);startApp(KEYS[k]);}else{msg.style.display='block';msg.style.background='rgba(255,23,68,0.1)';msg.style.color='var(--sell)';msg.textContent='⚠️ Ключ не найден';}}
+function startApp(user){
+  document.getElementById('gate').style.display='none';document.getElementById('app').style.display='block';$('hdr-user',user);
+  initAudio();if('Notification'in window&&Notification.permission==='default'){try{Notification.requestPermission();}catch(e){}}
+  const nb=document.getElementById('notify-badge');if(nb){nb.textContent=NOTIFY?'🔔 Сигнал вкл':'🔕 Сигнал выкл';nb.style.opacity=NOTIFY?'1':'0.5';}
+  document.getElementById('mode-sel').value=MODE;
+  renderGrid();$('chart-sym',SYM_NAME[curSym]+' · M1');
+  (async()=>{await loadAllKlines(curSym);runAll();for(const sym of ALL_SYMS){if(sym!==curSym){await fetchKline(sym,'1',1);await fetchKline(sym,'15',15);updatePC(sym);}}runAll();primeSignals();})();
+  connectWS();
+  setInterval(tick,1000);
+  setInterval(runAll,2000);                 // активная пара — почти реальное время
+  setInterval(scanAllPairs,12000);          // фон — маяки импульса по кругу
+  setInterval(()=>{fetchKline(curSym,'1',1);fetchKline(curSym,'5',5);fetchKline(curSym,'15',15);},30000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadAllKlines(curSym).then(runAll);});
+}
+document.addEventListener('DOMContentLoaded',()=>{const saved=localStorage.getItem('ws_scalp_key');if(saved&&KEYS[saved])startApp(KEYS[saved]);document.getElementById('gate-input').addEventListener('keypress',e=>{if(e.key==='Enter')checkKey();});});
+</script>
+</body>
+</html>
