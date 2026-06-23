@@ -301,8 +301,8 @@ function m1Series(sym,withLive){const s=ST[sym],base=s.candles[1]||[];return (wi
 
 // ════════ ПРОФИЛИ ЛОВЦА ИМПУЛЬСА ════════
 const PROF={
-  early:   {body:1.6,vol:2.0,conv:0.60,breakout:false,aligned:false,wickFilter:false,fibTargets:false,pullback:false,label:'Ранний'},
-  balanced:{body:1.9,vol:2.5,conv:0.65,breakout:true, aligned:false,wickFilter:true, fibTargets:true, pullback:false,label:'Сбалансированный'},
+  early:   {body:1.6,vol:2.0,conv:0.60,breakout:false,aligned:false,wickFilter:false,fibTargets:false,pullback:false,maxExt:2,label:'Ранний'},
+  balanced:{body:1.9,vol:2.5,conv:0.65,breakout:true, aligned:false,wickFilter:true, fibTargets:true, pullback:false,maxExt:1,label:'Сбалансированный'},
   careful: {body:2.2,vol:3.0,conv:0.70,breakout:true, aligned:true, wickFilter:true, fibTargets:true, pullback:true, label:'Осторожный'}
 };
 
@@ -337,60 +337,73 @@ function detectPullbackEntry(sym,atr,price){
 }
 
 function detectImpulse(sym,opts){
-  const useLive=!opts||opts.live!==false;
-  const cc=m1Series(sym,useLive);
-  if(cc.length<22)return{decision:'loading',reason:'Накапливаем свечи M1...'};
-  const price=ST[sym].price||cc[cc.length-1].c;
-  const atr=calcATR(cc.slice(0,-1),14)||price*0.001;
-  const cur=cc[cc.length-1];                          // текущая (живая) импульсная свеча
-  const up=cur.c>=cur.o, body=Math.abs(cur.c-cur.o), range=(cur.h-cur.l)||atr;
-  const prior20=cc.slice(-22,-1);
-  const aV=avgVol(prior20)||1;
-  const volSpike=cur.v/aV;
-  const bodyRatio=body/atr;
-  const conviction=up?(cur.c-cur.l)/range:(cur.h-cur.c)/range;   // закрытие у экстремума = сильно
-  const prior=cc.slice(-16,-1),hi=Math.max(...prior.map(x=>x.h)),lo=Math.min(...prior.map(x=>x.l));
-  const breakout=up?cur.c>hi:cur.c<lo;
-  // свежесть: сколько подряд крупных свечей в ту же сторону уже было ДО текущей
-  let ext=0;for(let i=cc.length-2;i>=0;i--){const x=cc[i],b=Math.abs(x.c-x.o);if(((x.c>=x.o)===up)&&b>atr*1.1)ext++;else break;}
-  const m15=detectTrend(sym,15),m5=detectTrend(sym,5);
-  const aligned=up?(m15!=='bear'):(m15!=='bull');
-  const fresh=ext<=1;                                   // только 1-я/2-я свеча импульса
+  const baseCc=m1Series(sym,false);                 // только ЗАКРЫТЫЕ свечи (реальный объём)
+  const liveCc=m1Series(sym,true);                  // + живая свеча
+  if(baseCc.length<22)return{decision:'loading',reason:'Накапливаем свечи M1...'};
+  const price=ST[sym].price||liveCc[liveCc.length-1].c;
+  const atr=calcATR(baseCc.slice(0,-1),14)||price*0.001;
   const prof=PROF[MODE]||PROF.balanced;
+  const maxExt=prof.maxExt!=null?prof.maxExt:1;
+
+  // Фибо-откат (только «Осторожный») — приоритетный вход
   if(prof.pullback){const pb=detectPullbackEntry(sym,atr,price);
     if(pb&&pb.fire){const risk=Math.abs(pb.entry-pb.sl),rr=risk>0?Math.abs(pb.tp1-pb.entry)/risk:0;
-      if(rr>=1.3){const sev2={bodyRatio:Math.round(bodyRatio*10)/10,volSpike:Math.round(volSpike*10)/10,conviction:Math.round(conviction*100),breakout:false,aligned:true,ext:0,m15:detectTrend(sym,15),m5:detectTrend(sym,5)};
+      if(rr>=1.3){const sev2={bodyRatio:0,volSpike:0,conviction:0,breakout:false,aligned:true,ext:0,m15:detectTrend(sym,15),m5:detectTrend(sym,5)};
         return{decision:'enter',dir:pb.dir,entry:pb.entry,sl:pb.sl,tp1:pb.tp1,tp2:pb.tp2,tp3:pb.tp3,rr:rr.toFixed(1),items:pb.items,sev:sev2,strength:78,fresh:'🟢 Откат к Фибо'};}}}
 
-  const cBody=bodyRatio>=prof.body, cVol=volSpike>=prof.vol, cConv=conviction>=prof.conv, cBrk=prof.breakout?breakout:true, cAln=prof.aligned?aligned:true;
-  const fire=cBody&&cVol&&cConv&&cBrk&&cAln&&fresh;
-  const dir=up?'Buy':'Sell',isBuy=up;
-  const sev={bodyRatio:Math.round(bodyRatio*10)/10,volSpike:Math.round(volSpike*10)/10,conviction:Math.round(conviction*100),breakout,aligned,ext,m15,m5};
-  // сила импульса 0..100
-  const strength=Math.min(100,Math.round((Math.min(bodyRatio/2.5,1)*40)+(Math.min(volSpike/4,1)*40)+(conviction*20)));
+  // Оценка одной свечи как импульса (idx — индекс в массиве cc)
+  function evalC(cc,idx,isLive){
+    const c=cc[idx];if(!c)return null;
+    const up=c.c>=c.o,body=Math.abs(c.c-c.o),range=(c.h-c.l)||atr;
+    const aV=avgVol(cc.slice(Math.max(0,idx-21),idx))||1;
+    let vol=c.v;
+    if(isLive){const elapsed=Math.min(1,Math.max(0.25,(Date.now()-c.t)/60000));vol=Math.min(c.v/elapsed,c.v*5);} // проекция частичного объёма на полную минуту
+    const volSpike=vol/aV,bodyRatio=body/atr,conviction=up?(c.c-c.l)/range:(c.h-c.c)/range;
+    const prior=cc.slice(Math.max(0,idx-15),idx),hi=prior.length?Math.max(...prior.map(x=>x.h)):c.h,lo=prior.length?Math.min(...prior.map(x=>x.l)):c.l;
+    const breakout=up?c.c>hi:c.c<lo;
+    let ext=0;for(let k=idx-1;k>=0;k--){const x=cc[k],b=Math.abs(x.c-x.o);if(((x.c>=x.o)===up)&&b>atr*1.1)ext++;else break;}
+    const m15=detectTrend(sym,15),m5=detectTrend(sym,5),aligned=up?(m15!=='bear'):(m15!=='bull'),fresh=ext<=maxExt;
+    const cBody=bodyRatio>=prof.body,cVol=(volSpike>=prof.vol)&&(c.v>=aV*0.4),cConv=conviction>=prof.conv,cBrk=prof.breakout?breakout:true,cAln=prof.aligned?aligned:true;
+    const fire=cBody&&cVol&&cConv&&cBrk&&cAln&&fresh;
+    return{c,up,body,range,bodyRatio,volSpike,conviction,breakout,aligned,ext,fresh,m15,m5,cBody,cVol,cConv,cBrk,cAln,fire};
+  }
 
-  if(fire){
+  // Сначала живая свеча (раньше всего), затем последняя ЗАКРЫТАЯ (надёжный объём)
+  const hasLive=liveCc.length>baseCc.length;
+  let E=hasLive?evalC(liveCc,liveCc.length-1,true):null;
+  if(!E||!E.fire){
+    const Ec=evalC(baseCc,baseCc.length-1,false);
+    if(Ec){
+      if(Ec.fire){const dist=Math.abs(price-Ec.c.c)/atr;if(dist<=1.2){E=Ec;}else{Ec.fire=false;Ec.stale=true;if(!E)E=Ec;}}
+      else if(!E)E=Ec;
+    }
+  }
+  if(!E)return{decision:'wait',dir:null,reason:'Импульса нет — рынок спокоен, ждём резкого движения с объёмом',sev:{},strength:0};
+
+  const up=E.up,isBuy=up,dir=up?'Buy':'Sell',cur=E.c;
+  const sev={bodyRatio:Math.round(E.bodyRatio*10)/10,volSpike:Math.round(E.volSpike*10)/10,conviction:Math.round(E.conviction*100),breakout:E.breakout,aligned:E.aligned,ext:E.ext,m15:E.m15,m5:E.m5};
+  const strength=Math.min(100,Math.round((Math.min(E.bodyRatio/2.5,1)*40)+(Math.min(E.volSpike/4,1)*40)+(E.conviction*20)));
+
+  if(E.fire){
     const entry=price;let sl,tp1,tp2,tp3,fibNote='';
     if(isBuy){sl=cur.l-atr*0.3;if(sl>=entry)sl=entry-atr;const r=entry-sl;tp1=entry+r*1.5;tp2=entry+r*2.5;tp3=entry+r*4;
-      if(prof.fibTargets){const ls=cc.slice(Math.max(0,cc.length-2-ext),cc.length),lo2=Math.min(...ls.map(x=>x.l)),hi2=Math.max(...ls.map(x=>x.h)),L=hi2-lo2;if(L>atr*0.8&&(L*0.272)/r>=1.0){tp1=entry+L*0.272;tp2=entry+L*0.618;tp3=entry+L*1.0;fibNote='Фибо-расширения';}}}
+      if(prof.fibTargets){const ls=baseCc.slice(Math.max(0,baseCc.length-2-E.ext)),lo2=Math.min(...ls.map(x=>x.l)),hi2=Math.max(...ls.map(x=>x.h)),L=hi2-lo2;if(L>atr*0.8&&(L*0.272)/r>=1.0){tp1=entry+L*0.272;tp2=entry+L*0.618;tp3=entry+L*1.0;fibNote='Фибо-расширения';}}}
     else{sl=cur.h+atr*0.3;if(sl<=entry)sl=entry+atr;const r=sl-entry;tp1=entry-r*1.5;tp2=entry-r*2.5;tp3=entry-r*4;
-      if(prof.fibTargets){const ls=cc.slice(Math.max(0,cc.length-2-ext),cc.length),lo2=Math.min(...ls.map(x=>x.l)),hi2=Math.max(...ls.map(x=>x.h)),L=hi2-lo2;if(L>atr*0.8&&(L*0.272)/r>=1.0){tp1=entry-L*0.272;tp2=entry-L*0.618;tp3=entry-L*1.0;fibNote='Фибо-расширения';}}}
+      if(prof.fibTargets){const ls=baseCc.slice(Math.max(0,baseCc.length-2-E.ext)),lo2=Math.min(...ls.map(x=>x.l)),hi2=Math.max(...ls.map(x=>x.h)),L=hi2-lo2;if(L>atr*0.8&&(L*0.272)/r>=1.0){tp1=entry-L*0.272;tp2=entry-L*0.618;tp3=entry-L*1.0;fibNote='Фибо-расширения';}}}
     const risk=Math.abs(entry-sl),rr=risk>0?Math.abs(tp1-entry)/risk:0;
     if(rr<1.3)return{decision:'wait',dir,reason:'Импульс есть, но стоп слишком широкий (R:R мал) — пропускаем',sev,strength};
     const items=[`Импульс ${isBuy?'ВВЕРХ ↑':'ВНИЗ ↓'}`,`Тело ${sev.bodyRatio}× ATR`,`Объём ×${sev.volSpike}`,`Закрытие у ${isBuy?'хая':'лоя'} (${sev.conviction}%)`];
-    if(breakout)items.push('Пробой микро-уровня');
-    if(aligned)items.push('M15 не против');
+    if(E.breakout)items.push('Пробой микро-уровня');
+    if(E.aligned)items.push('M15 не против');
     if(fibNote)items.push('Цели: '+fibNote);
-    return{decision:'enter',dir,entry,sl,tp1,tp2,tp3,rr:rr.toFixed(1),items,sev,strength,fresh:sev.ext===0?'🟢 Самое начало':'🟡 2-я свеча'};
+    return{decision:'enter',dir,entry,sl,tp1,tp2,tp3,rr:rr.toFixed(1),items,sev,strength,fresh:sev.ext===0?'🟢 Самое начало':(sev.ext===1?'🟡 2-я свеча':'🟠 '+(sev.ext+1)+'-я свеча')};
   }
-
-  // импульс зреет?
-  const building=(bodyRatio>=prof.body*0.7&&volSpike>=prof.vol*0.7)||(volSpike>=prof.vol&&bodyRatio>=prof.body*0.6);
-  if(building&&fresh){
-    const need=[];if(!cBody)need.push(`тело ${sev.bodyRatio}/${prof.body}× ATR`);if(!cVol)need.push(`объём ×${sev.volSpike}/${prof.vol}`);if(!cConv)need.push(`закрытие ${sev.conviction}%/${Math.round(prof.conv*100)}%`);if(prof.breakout&&!breakout)need.push('пробой уровня');if(prof.aligned&&!aligned)need.push('согласие M15');
+  const building=(E.bodyRatio>=prof.body*0.7&&E.volSpike>=prof.vol*0.7)||(E.volSpike>=prof.vol&&E.bodyRatio>=prof.body*0.6);
+  if(building&&E.fresh&&!E.stale){
+    const need=[];if(!E.cBody)need.push(`тело ${sev.bodyRatio}/${prof.body}× ATR`);if(!E.cVol)need.push(`объём ×${sev.volSpike}/${prof.vol}`);if(!E.cConv)need.push(`закрытие ${sev.conviction}%/${Math.round(prof.conv*100)}%`);if(prof.breakout&&!E.breakout)need.push('пробой уровня');if(prof.aligned&&!E.aligned)need.push('согласие M15');
     return{decision:'building',dir,reason:`Импульс ${isBuy?'вверх':'вниз'} зреет — ждём: ${need.join(', ')}`,sev,strength};
   }
-  if(!fresh&&(bodyRatio>=prof.body))return{decision:'late',dir,reason:`Импульс уже идёт ${sev.ext+1} свечу — поздно входить, ждём следующий`,sev,strength};
+  if((E.stale||!E.fresh)&&E.bodyRatio>=prof.body)return{decision:'late',dir,reason:E.stale?'Импульс был, но цена уже ушла — поздно входить, ждём следующий':`Импульс уже идёт ${sev.ext+1} свечу — поздно входить, ждём следующий`,sev,strength};
   return{decision:'wait',dir:null,reason:'Импульса нет — рынок спокоен, ждём резкого движения с объёмом',sev,strength};
 }
 
