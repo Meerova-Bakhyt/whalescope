@@ -302,9 +302,9 @@ function m1Series(sym,withLive){const s=ST[sym],base=s.candles[1]||[];return (wi
 
 // ════════ ПРОФИЛИ ЛОВЦА ИМПУЛЬСА ════════
 const PROF={
-  early:   {body:1.6,vol:2.0,conv:0.60,breakout:false,aligned:false,wickFilter:false,fibTargets:false,pullback:false,maxExt:2,label:'Ранний'},
-  balanced:{body:1.9,vol:2.5,conv:0.65,breakout:true, aligned:false,wickFilter:true, fibTargets:true, pullback:false,maxExt:1,label:'Сбалансированный'},
-  careful: {body:2.2,vol:3.0,conv:0.70,breakout:true, aligned:true, wickFilter:true, fibTargets:true, pullback:true, label:'Осторожный'}
+  early:   {body:1.3,vol:1.7,conv:0.55,breakout:false,aligned:false,wickFilter:false,fibTargets:false,pullback:false,maxExt:2,label:'Ранний'},
+  balanced:{body:1.7,vol:2.1,conv:0.60,breakout:true, aligned:false,wickFilter:true, fibTargets:true, pullback:false,maxExt:1,label:'Сбалансированный'},
+  careful: {body:2.0,vol:2.6,conv:0.66,breakout:true, aligned:true, wickFilter:true, fibTargets:true, pullback:true, maxExt:1,label:'Осторожный'}
 };
 
 // ════════ ДВИЖОК: ЛОВЕЦ ИМПУЛЬСА ════════
@@ -364,7 +364,7 @@ function detectImpulse(sym,opts){
     const breakout=up?c.c>hi:c.c<lo;
     let ext=0;for(let k=idx-1;k>=0;k--){const x=cc[k],b=Math.abs(x.c-x.o);if(((x.c>=x.o)===up)&&b>atr*1.1)ext++;else break;}
     const m15=detectTrend(sym,15),m5=detectTrend(sym,5),aligned=up?(m15!=='bear'):(m15!=='bull'),fresh=ext<=maxExt;
-    const cBody=bodyRatio>=prof.body,cVol=(volSpike>=prof.vol)&&(c.v>=aV*0.4),cConv=conviction>=prof.conv,cBrk=prof.breakout?breakout:true,cAln=prof.aligned?aligned:true;
+    const cBody=bodyRatio>=prof.body*(isLive?0.7:1),cVol=(volSpike>=prof.vol)&&(c.v>=aV*0.4),cConv=conviction>=prof.conv,cBrk=prof.breakout?breakout:true,cAln=prof.aligned?aligned:true;
     const fire=cBody&&cVol&&cConv&&cBrk&&cAln&&fresh;
     return{c,up,body,range,bodyRatio,volSpike,conviction,breakout,aligned,ext,fresh,m15,m5,cBody,cVol,cConv,cBrk,cAln,fire};
   }
@@ -375,7 +375,7 @@ function detectImpulse(sym,opts){
   if(!E||!E.fire){
     const Ec=evalC(baseCc,baseCc.length-1,false);
     if(Ec){
-      if(Ec.fire){const dist=Math.abs(price-Ec.c.c)/atr;if(dist<=1.2){E=Ec;}else{Ec.fire=false;Ec.stale=true;if(!E)E=Ec;}}
+      if(Ec.fire){const dist=Math.abs(price-Ec.c.c)/atr;if(dist<=2.5){E=Ec;}else{Ec.fire=false;Ec.stale=true;if(!E)E=Ec;}}
       else if(!E)E=Ec;
     }
   }
