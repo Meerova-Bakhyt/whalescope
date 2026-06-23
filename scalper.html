@@ -213,6 +213,9 @@ canvas{display:block;width:100%}
     <div style="padding:0 18px 16px"><div id="sig-tech" style="padding:8px 12px;border-radius:8px;background:var(--p2);border:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--m2)">—</div></div>
   </div>
 
+  <div class="section-title">🧲 Имбалансы · ближайшие зоны интереса (M1 + M5)</div>
+  <div class="card mb12" id="imb-box"><div style="padding:14px;color:var(--m2);font-family:var(--mono);font-size:11px">Анализ имбалансов...</div></div>
+
   <div id="chart-wrap">
     <div id="chart-hdr">
       <div id="chart-sym">— · M1</div>
@@ -298,12 +301,41 @@ function m1Series(sym,withLive){const s=ST[sym],base=s.candles[1]||[];return (wi
 
 // ════════ ПРОФИЛИ ЛОВЦА ИМПУЛЬСА ════════
 const PROF={
-  early:   {body:1.6,vol:2.0,conv:0.60,breakout:false,aligned:false,label:'Ранний'},
-  balanced:{body:1.9,vol:2.5,conv:0.65,breakout:true, aligned:false,label:'Сбалансированный'},
-  careful: {body:2.2,vol:3.0,conv:0.70,breakout:true, aligned:true, label:'Осторожный'}
+  early:   {body:1.6,vol:2.0,conv:0.60,breakout:false,aligned:false,wickFilter:false,fibTargets:false,pullback:false,label:'Ранний'},
+  balanced:{body:1.9,vol:2.5,conv:0.65,breakout:true, aligned:false,wickFilter:true, fibTargets:true, pullback:false,label:'Сбалансированный'},
+  careful: {body:2.2,vol:3.0,conv:0.70,breakout:true, aligned:true, wickFilter:true, fibTargets:true, pullback:true, label:'Осторожный'}
 };
 
 // ════════ ДВИЖОК: ЛОВЕЦ ИМПУЛЬСА ════════
+// Фибо-откат: импульсная нога → откат в 0.5–0.618 → повторный толчок (для режима «Осторожный»)
+function detectPullbackEntry(sym,atr,price){
+  const cc=m1Series(sym,true);if(cc.length<14)return{fire:false};
+  const win=cc.slice(-12);
+  let lo=Infinity,hi=-Infinity,iLo=0,iHi=0;
+  win.forEach((x,i)=>{if(x.l<lo){lo=x.l;iLo=i;}if(x.h>hi){hi=x.h;iHi=i;}});
+  const L=hi-lo;if(L<atr*1.5)return{fire:false};
+  const closed=cc[cc.length-2];if(!closed)return{fire:false};
+  const rng=(closed.h-closed.l)||atr;
+  if(iHi>iLo){                                  // восходящая нога → откат вниз → вход BUY
+    const zHi=hi-L*0.5, zLo=hi-L*0.618;
+    const inZone=price<=zHi+atr*0.2&&price>=zLo-atr*0.2;
+    const pulled=price<hi-L*0.3;
+    const repush=closed.c>closed.o&&(closed.c-closed.l)>rng*0.5;
+    if(inZone&&pulled&&repush){const entry=price,sl=Math.min(zLo,closed.l)-atr*0.3;
+      return{fire:true,dir:'Buy',entry,sl,tp1:hi,tp2:hi+L*0.272,tp3:hi+L*0.618,zLo,zHi,
+        items:['Откат к Фибо 0.5–0.618 (BUY ↑)',`Нога ${(L/atr).toFixed(1)}× ATR`,'Повторный толчок вверх','Цели: Фибо-расширения']};}
+  }else{                                        // нисходящая нога → откат вверх → вход SELL
+    const zLo=lo+L*0.5, zHi=lo+L*0.618;
+    const inZone=price>=zLo-atr*0.2&&price<=zHi+atr*0.2;
+    const pulled=price>lo+L*0.3;
+    const repush=closed.c<closed.o&&(closed.h-closed.c)>rng*0.5;
+    if(inZone&&pulled&&repush){const entry=price,sl=Math.max(zHi,closed.h)+atr*0.3;
+      return{fire:true,dir:'Sell',entry,sl,tp1:lo,tp2:lo-L*0.272,tp3:lo-L*0.618,zLo,zHi,
+        items:['Откат к Фибо 0.5–0.618 (SELL ↓)',`Нога ${(L/atr).toFixed(1)}× ATR`,'Повторный толчок вниз','Цели: Фибо-расширения']};}
+  }
+  return{fire:false};
+}
+
 function detectImpulse(sym,opts){
   const useLive=!opts||opts.live!==false;
   const cc=m1Series(sym,useLive);
@@ -325,6 +357,10 @@ function detectImpulse(sym,opts){
   const aligned=up?(m15!=='bear'):(m15!=='bull');
   const fresh=ext<=1;                                   // только 1-я/2-я свеча импульса
   const prof=PROF[MODE]||PROF.balanced;
+  if(prof.pullback){const pb=detectPullbackEntry(sym,atr,price);
+    if(pb&&pb.fire){const risk=Math.abs(pb.entry-pb.sl),rr=risk>0?Math.abs(pb.tp1-pb.entry)/risk:0;
+      if(rr>=1.3){const sev2={bodyRatio:Math.round(bodyRatio*10)/10,volSpike:Math.round(volSpike*10)/10,conviction:Math.round(conviction*100),breakout:false,aligned:true,ext:0,m15:detectTrend(sym,15),m5:detectTrend(sym,5)};
+        return{decision:'enter',dir:pb.dir,entry:pb.entry,sl:pb.sl,tp1:pb.tp1,tp2:pb.tp2,tp3:pb.tp3,rr:rr.toFixed(1),items:pb.items,sev:sev2,strength:78,fresh:'🟢 Откат к Фибо'};}}}
 
   const cBody=bodyRatio>=prof.body, cVol=volSpike>=prof.vol, cConv=conviction>=prof.conv, cBrk=prof.breakout?breakout:true, cAln=prof.aligned?aligned:true;
   const fire=cBody&&cVol&&cConv&&cBrk&&cAln&&fresh;
@@ -334,16 +370,20 @@ function detectImpulse(sym,opts){
   const strength=Math.min(100,Math.round((Math.min(bodyRatio/2.5,1)*40)+(Math.min(volSpike/4,1)*40)+(conviction*20)));
 
   if(fire){
-    const entry=price;let sl,tp1,tp2,tp3;
-    if(isBuy){sl=cur.l-atr*0.3;if(sl>=entry)sl=entry-atr;const r=entry-sl;tp1=entry+r*1.5;tp2=entry+r*2.5;tp3=entry+r*4;}
-    else{sl=cur.h+atr*0.3;if(sl<=entry)sl=entry+atr;const r=sl-entry;tp1=entry-r*1.5;tp2=entry-r*2.5;tp3=entry-r*4;}
+    const entry=price;let sl,tp1,tp2,tp3,fibNote='';
+    if(isBuy){sl=cur.l-atr*0.3;if(sl>=entry)sl=entry-atr;const r=entry-sl;tp1=entry+r*1.5;tp2=entry+r*2.5;tp3=entry+r*4;
+      if(prof.fibTargets){const ls=cc.slice(Math.max(0,cc.length-2-ext),cc.length),lo2=Math.min(...ls.map(x=>x.l)),hi2=Math.max(...ls.map(x=>x.h)),L=hi2-lo2;if(L>atr*0.8&&(L*0.272)/r>=1.0){tp1=entry+L*0.272;tp2=entry+L*0.618;tp3=entry+L*1.0;fibNote='Фибо-расширения';}}}
+    else{sl=cur.h+atr*0.3;if(sl<=entry)sl=entry+atr;const r=sl-entry;tp1=entry-r*1.5;tp2=entry-r*2.5;tp3=entry-r*4;
+      if(prof.fibTargets){const ls=cc.slice(Math.max(0,cc.length-2-ext),cc.length),lo2=Math.min(...ls.map(x=>x.l)),hi2=Math.max(...ls.map(x=>x.h)),L=hi2-lo2;if(L>atr*0.8&&(L*0.272)/r>=1.0){tp1=entry-L*0.272;tp2=entry-L*0.618;tp3=entry-L*1.0;fibNote='Фибо-расширения';}}}
     const risk=Math.abs(entry-sl),rr=risk>0?Math.abs(tp1-entry)/risk:0;
     if(rr<1.3)return{decision:'wait',dir,reason:'Импульс есть, но стоп слишком широкий (R:R мал) — пропускаем',sev,strength};
     const items=[`Импульс ${isBuy?'ВВЕРХ ↑':'ВНИЗ ↓'}`,`Тело ${sev.bodyRatio}× ATR`,`Объём ×${sev.volSpike}`,`Закрытие у ${isBuy?'хая':'лоя'} (${sev.conviction}%)`];
     if(breakout)items.push('Пробой микро-уровня');
     if(aligned)items.push('M15 не против');
+    if(fibNote)items.push('Цели: '+fibNote);
     return{decision:'enter',dir,entry,sl,tp1,tp2,tp3,rr:rr.toFixed(1),items,sev,strength,fresh:sev.ext===0?'🟢 Самое начало':'🟡 2-я свеча'};
   }
+
   // импульс зреет?
   const building=(bodyRatio>=prof.body*0.7&&volSpike>=prof.vol*0.7)||(volSpike>=prof.vol&&bodyRatio>=prof.body*0.6);
   if(building&&fresh){
@@ -355,6 +395,47 @@ function detectImpulse(sym,opts){
 }
 
 function getInd(sym){const cc=m1Series(sym,true),p=cc.map(x=>x.c);return{price:ST[sym].price,stochRsi:calcStochRSI(p),rsi:calcRSI(p,14),atr:calcATR(cc,14),m15:detectTrend(sym,15),m5:detectTrend(sym,5),m1:detectTrend(sym,1)};}
+
+// ════════ ИМБАЛАНСЫ (FVG) · M1 + M5 ════════
+function detectFVG(cc,atr){
+  const out={bull:[],bear:[]};if(!cc||cc.length<5)return out;
+  const n=cc.length,minGap=Math.max(atr*0.2,1e-9);
+  for(let i=2;i<n-1;i++){                       // не берём самую последнюю (живую) свечу как центр
+    const a=cc[i-2],c=cc[i];
+    if(c.l-a.h>minGap){const lo=a.h,hi=c.l;let filled=false;for(let j=i+1;j<n;j++){if(cc[j].l<=lo){filled=true;break;}}if(!filled)out.bull.push({lo,hi,mid:(lo+hi)/2,size:hi-lo,ago:n-1-i});}
+    if(a.l-c.h>minGap){const lo=c.h,hi=a.l;let filled=false;for(let j=i+1;j<n;j++){if(cc[j].h>=hi){filled=true;break;}}if(!filled)out.bear.push({lo,hi,mid:(lo+hi)/2,size:hi-lo,ago:n-1-i});}
+  }
+  return out;
+}
+function nearestImbalances(sym){
+  const price=ST[sym].price||0;if(!price)return{below:null,above:null,count:0};
+  const out=[];
+  [['M1',ST[sym].candles[1]||[]],['M5',ST[sym].candles[5]||[]]].forEach(([tf,cc])=>{const atr=calcATR(cc,14)||price*0.001;const f=detectFVG(cc,atr);f.bull.forEach(g=>out.push(Object.assign({},g,{tf,type:'bull'})));f.bear.forEach(g=>out.push(Object.assign({},g,{tf,type:'bear'})));});
+  function stack(z){if(!z)return 1;return out.filter(g=>Math.abs(g.mid-z.mid)<=z.size*1.5).length;}
+  const below=out.filter(g=>g.hi<=price).sort((a,b)=>b.hi-a.hi)[0]||null;
+  const above=out.filter(g=>g.lo>=price).sort((a,b)=>a.lo-b.lo)[0]||null;
+  if(below)below.stacked=stack(below);if(above)above.stacked=stack(above);
+  return{below,above,count:out.length};
+}
+function updateImbalances(){
+  const sym=curSym,price=ST[sym].price||0,ni=nearestImbalances(sym),H=detectImpulse(sym),dp=v=>fmtP(sym,v);
+  function row(z,side,buyers){
+    if(!z)return `<div class="mf-row"><span class="mf-ico">—</span><span>${side}: незакрытых имбалансов нет</span></div>`;
+    const strong=z.stacked>=2?` · 🔥 наслоение ×${z.stacked}`:'';
+    const fresh=z.ago<=3?'свежий':z.ago+' св. назад';
+    return `<div class="mf-row"><span class="mf-ico">${buyers?'🟢':'🔴'}</span><span>${side}: <b>${dp(z.lo)}–${dp(z.hi)}</b> · ${z.tf}${strong} · ${fresh}</span></div>`;
+  }
+  let bias;
+  if(ni.below&&ni.above){const dB=price-ni.below.hi,dA=ni.above.lo-price;bias=dA<dB?'Ближе зона продавцов сверху — магнит ВВЕРХ к ней':'Ближе зона покупателей снизу — магнит ВНИЗ к ней';}
+  else if(ni.above)bias='Есть только зона сверху — магнит ВВЕРХ';
+  else if(ni.below)bias='Есть только зона снизу — магнит ВНИЗ';
+  else bias='Чистый участок — ближайших имбалансов нет';
+  let magnet='';
+  if(H.dir==='Buy'&&ni.above)magnet=`🎯 Цель по ходу импульса (↑): ${dp(ni.above.lo)}–${dp(ni.above.hi)} (${ni.above.tf})`;
+  else if(H.dir==='Sell'&&ni.below)magnet=`🎯 Цель по ходу импульса (↓): ${dp(ni.below.lo)}–${dp(ni.below.hi)} (${ni.below.tf})`;
+  const box=document.getElementById('imb-box');if(!box)return;
+  box.innerHTML=row(ni.above,'Сверху · зона продавцов',false)+row(ni.below,'Снизу · зона покупателей',true)+`<div class="mf-row"><span class="mf-ico">🧭</span><span>${bias}</span></div>`+(magnet?`<div class="mf-row"><span class="mf-ico">🧲</span><span>${magnet}</span></div>`:'');
+}
 
 // ════════ ОТРИСОВКА СИГНАЛА ════════
 function updateSignalBlock(){
@@ -400,6 +481,7 @@ function updateMasterFilter(){
     {ok:!prof.breakout||v.breakout,t:`Пробой микро-уровня: ${v.breakout?'да':'нет'}${prof.breakout?'':' (не требуется)'}`},
     {ok:!prof.aligned||v.aligned,t:`M15 не против входа: ${v.aligned?'да':'против'}${prof.aligned?'':' (не требуется)'}`},
     {ok:(v.ext!=null&&v.ext<=1),t:`Свежесть: ${v.ext!=null?(v.ext===0?'самое начало':v.ext+' свеча(и) уже прошли'):'—'}`},
+    (function(){const ni=nearestImbalances(sym);const z=H.dir==='Buy'?ni.above:H.dir==='Sell'?ni.below:null;return {ok:!!z,t:`Имбаланс по ходу импульса (магнит/топливо): ${z?'есть '+(z.stacked>=2?'🔥сильный ':'')+z.tf:'нет впереди'}`};})(),
     {ok:H.decision==='enter',t:`ИТОГ — ВХОД В ИМПУЛЬС: ${H.decision==='enter'?'ГОТОВ ✅':H.decision==='building'?'зреет':H.decision==='late'?'поздно':'ждём'}`}
   ];
   document.getElementById('mf-box').innerHTML=rows.map(r=>`<div class="mf-row"><span class="mf-ico">${r.ok?'✅':'⏳'}</span><span>${r.t}</span></div>`).join('');
@@ -428,7 +510,7 @@ function connectWS(){try{ws=new WebSocket('wss://stream.bybit.com/v5/public/line
 function resubscribeTrades(sym){if(!ws||ws.readyState!==1)return;try{if(curTradeSub)ws.send(JSON.stringify({op:'unsubscribe',args:[curTradeSub]}));curTradeSub='publicTrade.'+sym;ws.send(JSON.stringify({op:'subscribe',args:[curTradeSub]}));}catch(e){}}
 function addFeed(side,price,usd){const box=document.getElementById('feed-box');if(box.children.length===1&&box.textContent.includes('Ожидаем'))box.innerHTML='';const row=document.createElement('div');row.className='feed-row';const b=side==='Buy';row.innerHTML=`<span style="color:${b?'var(--buy)':'var(--sell)'}">${b?'🟢 ПОКУПКА':'🔴 ПРОДАЖА'}</span><span>${fmtP(curSym,price)}</span><span style="color:${b?'var(--buy)':'var(--sell)'}">$${(usd/1000).toFixed(1)}K</span>`;box.insertBefore(row,box.firstChild);while(box.children.length>15)box.removeChild(box.lastChild);}
 
-function runAll(){try{updateActiveBar();updateSignalBlock();updateMasterFilter();updateMTF();updateIndPanel();calcPos();drawChart();drawStoch();}catch(e){console.error('runAll',e);}}
+function runAll(){try{updateActiveBar();updateSignalBlock();updateMasterFilter();updateMTF();updateImbalances();updateIndPanel();calcPos();drawChart();drawStoch();}catch(e){console.error('runAll',e);}}
 function toggleKitchen(){const c=document.getElementById('kitchen-content'),a=document.getElementById('kitchen-arrow');if(c.style.display==='none'){c.style.display='block';a.style.transform='rotate(180deg)';}else{c.style.display='none';a.style.transform='rotate(0deg)';}}
 
 // ════════ УВЕДОМЛЕНИЯ ════════
