@@ -44,6 +44,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 .pc:hover{border-color:var(--b2);transform:translateY(-1px)}
 .pc.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .pc.signal-enter{border-color:var(--buy)!important;box-shadow:0 0 0 1px var(--buy),0 0 14px rgba(0,230,118,0.45);animation:sigpulse 1.6s infinite}
+.pc.signal-sweep{border-color:var(--accent)!important;box-shadow:0 0 0 1px var(--accent),0 0 10px rgba(41,121,255,0.4)}
 @keyframes sigpulse{0%,100%{box-shadow:0 0 0 1px var(--buy),0 0 8px rgba(0,230,118,0.35)}50%{box-shadow:0 0 0 1px var(--buy),0 0 18px rgba(0,230,118,0.6)}}
 .pc-sig{position:absolute;top:7px;right:9px;font-size:14px;line-height:1}
 .pc-top{display:flex;align-items:center;gap:7px;margin-bottom:2px}
@@ -420,6 +421,19 @@ function detectFVG(cc,atr){
   }
   return out;
 }
+// Снятие ликвидности (свип): фитиль за недавний экстремум + возврат обратно → возможный лифт
+function detectSweep(sym){
+  const cc=m1Series(sym,false);
+  if(!cc||cc.length<16)return{found:false};
+  const atr=calcATR(cc.slice(0,-1),14)||(ST[sym].price||1)*0.001,N=cc.length;
+  const ref=cc.slice(N-16,N-2);if(ref.length<6)return{found:false};
+  const swLow=Math.min(...ref.map(x=>x.l)),swHigh=Math.max(...ref.map(x=>x.h));
+  for(let ago=1;ago<=2;ago++){const c=cc[N-ago];if(!c)continue;
+    if(c.l<swLow-atr*0.1&&c.c>swLow)return{found:true,dir:'Buy',level:swLow,ago:ago-1,depth:Math.round((swLow-c.l)/atr*100)/100};
+    if(c.h>swHigh+atr*0.1&&c.c<swHigh)return{found:true,dir:'Sell',level:swHigh,ago:ago-1,depth:Math.round((c.h-swHigh)/atr*100)/100};
+  }
+  return{found:false};
+}
 function nearestImbalances(sym){
   const price=ST[sym].price||0;if(!price)return{below:null,above:null,count:0};
   const out=[];
@@ -446,8 +460,12 @@ function updateImbalances(){
   let magnet='';
   if(H.dir==='Buy'&&ni.above)magnet=`🎯 Цель по ходу импульса (↑): ${dp(ni.above.lo)}–${dp(ni.above.hi)} (${ni.above.tf})`;
   else if(H.dir==='Sell'&&ni.below)magnet=`🎯 Цель по ходу импульса (↓): ${dp(ni.below.lo)}–${dp(ni.below.hi)} (${ni.below.tf})`;
+  let sw={found:false};try{sw=detectSweep(sym);}catch(e){}
+  const swRow=sw.found
+    ?`<div class="mf-row"><span class="mf-ico">💧</span><span><b>Снятие ликвидности ${sw.dir==='Buy'?'снизу':'сверху'}</b> ${sw.ago===0?'(только что)':sw.ago+' св. назад'} — возможен лифт ${sw.dir==='Buy'?'ВВЕРХ ↑':'ВНИЗ ↓'} · свип ${sw.depth} ATR</span></div>`
+    :`<div class="mf-row"><span class="mf-ico">—</span><span>Свежего снятия ликвидности нет</span></div>`;
   const box=document.getElementById('imb-box');if(!box)return;
-  box.innerHTML=row(ni.above,'Сверху · зона продавцов',false)+row(ni.below,'Снизу · зона покупателей',true)+`<div class="mf-row"><span class="mf-ico">🧭</span><span>${bias}</span></div>`+(magnet?`<div class="mf-row"><span class="mf-ico">🧲</span><span>${magnet}</span></div>`:'');
+  box.innerHTML=swRow+row(ni.above,'Сверху · зона продавцов',false)+row(ni.below,'Снизу · зона покупателей',true)+`<div class="mf-row"><span class="mf-ico">🧭</span><span>${bias}</span></div>`+(magnet?`<div class="mf-row"><span class="mf-ico">🧲</span><span>${magnet}</span></div>`:'');
 }
 
 // ════════ ОТРИСОВКА СИГНАЛА ════════
@@ -539,7 +557,7 @@ function tick(){$('clock',new Date().toLocaleTimeString('ru-RU'));}
 
 // ════════ ФОНОВЫЙ СКАНЕР (маяки импульса) ════════
 let scanIdx=0,scanReady=false,scanBusy=false;
-function markPairSignal(sym,dec){const card=document.getElementById('pc-'+sym);if(!card)return;card.classList.toggle('signal-enter',dec==='enter');const sig=document.getElementById('pcs-'+sym);if(sig)sig.textContent=dec==='enter'?'🚀':(dec==='building'?'⏰':(dec==='late'?'🏃':''));}
+function markPairSignal(sym,dec){const card=document.getElementById('pc-'+sym);if(!card)return;card.classList.toggle('signal-enter',dec==='enter');let sw={found:false};try{sw=detectSweep(sym);}catch(e){}card.classList.toggle('signal-sweep',sw.found&&dec!=='enter');const sig=document.getElementById('pcs-'+sym);if(sig)sig.textContent=(sw.found?'💧':'')+(dec==='enter'?'🚀':(dec==='building'?'⏰':(dec==='late'?'🏃':'')));}
 function notifyMulti(list){if(!NOTIFY)return;beep(list[0].buy);const names=list.map(x=>`${SYM_NAME[x.sym]} ${x.buy?'↑':'↓'}`).join(', ');flashTitle('ИМПУЛЬС: '+names);try{if('Notification'in window&&Notification.permission==='granted')new Notification('⚡ WhaleScope M1 — импульс',{body:names});}catch(e){}}
 function primeSignals(){for(const sym of ALL_SYMS){try{const H=detectImpulse(sym,{live:sym===curSym});lastSig[sym]=H.decision;markPairSignal(sym,H.decision);}catch(e){}}scanReady=true;}
 async function scanAllPairs(){if(!scanReady||scanBusy)return;scanBusy=true;try{const batch=4,refresh=[];for(let i=0;i<batch;i++)refresh.push(ALL_SYMS[(scanIdx+i)%ALL_SYMS.length]);scanIdx=(scanIdx+batch)%ALL_SYMS.length;await Promise.all(refresh.map(s=>fetchKline(s,'1',1).catch(()=>{})));const ne=[];for(const sym of ALL_SYMS){let dec='',buy=false;try{const H=detectImpulse(sym,{live:sym===curSym});dec=H.decision;buy=H.dir==='Buy';}catch(e){continue;}if(dec==='enter'&&lastSig[sym]!=='enter'&&sym!==curSym)ne.push({sym,buy});lastSig[sym]=dec;markPairSignal(sym,dec);}if(ne.length)notifyMulti(ne);}finally{scanBusy=false;}}
